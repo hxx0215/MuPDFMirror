@@ -912,6 +912,9 @@ static void killtimer(pdfapp_t *app)
 
 void handlekey(int c)
 {
+	int modifier = (GetAsyncKeyState(VK_SHIFT) < 0);
+	modifier |= ((GetAsyncKeyState(VK_CONTROL) < 0)<<2);
+
 	if (timer_pending)
 		killtimer(&gapp);
 
@@ -940,12 +943,15 @@ void handlekey(int c)
 		}
 	}
 
-	pdfapp_onkey(&gapp, c);
+	pdfapp_onkey(&gapp, c, modifier);
 	winrepaint(&gapp);
 }
 
 void handlemouse(int x, int y, int btn, int state)
 {
+	int modifier = (GetAsyncKeyState(VK_SHIFT) < 0);
+	modifier |= ((GetAsyncKeyState(VK_CONTROL) < 0)<<2);
+
 	if (state != 0 && timer_pending)
 		killtimer(&gapp);
 
@@ -960,7 +966,7 @@ void handlemouse(int x, int y, int btn, int state)
 	if (state == -1)
 		ReleaseCapture();
 
-	pdfapp_onmouse(&gapp, x, y, btn, 0, state);
+	pdfapp_onmouse(&gapp, x, y, btn, modifier, state);
 }
 
 LRESULT CALLBACK
@@ -1097,9 +1103,11 @@ viewproc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	case WM_MOUSEWHEEL:
 		if ((signed short)HIWORD(wParam) > 0)
-			handlekey(LOWORD(wParam) & MK_SHIFT ? '+' : 'k');
+			handlemouse(oldx, oldy, 4, 1);
+			//handlekey(LOWORD(wParam) & MK_SHIFT ? '+' : 'k');
 		else
-			handlekey(LOWORD(wParam) & MK_SHIFT ? '-' : 'j');
+			handlemouse(oldx, oldy, 5, 1);
+			//handlekey(LOWORD(wParam) & MK_SHIFT ? '-' : 'j');
 		return 0;
 
 	/* Timer */

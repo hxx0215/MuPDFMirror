@@ -14,11 +14,11 @@ static int showcolumn;
 
 static void usage(void)
 {
-	fprintf(stderr, "usage: mutool show [options] file.pdf [grep] [xref] [trailer] [pages] [object numbers]\n");
+	fprintf(stderr, "usage: mutool show [options] file.pdf [grep] [xref] [trailer] [pages] [outline] [object numbers]\n");
+	fprintf(stderr, "\t-p -\tpassword\n");
+	fprintf(stderr, "\t-o -\toutput file\n");
 	fprintf(stderr, "\t-b\tprint streams as binary data\n");
 	fprintf(stderr, "\t-e\tprint encoded streams (don't decode)\n");
-	fprintf(stderr, "\t-p\tpassword\n");
-	fprintf(stderr, "\t-o\toutput file\n");
 	exit(1);
 }
 
@@ -190,6 +190,28 @@ static void showgrep(char *filename)
 	pdf_fprint_obj(ctx, out, pdf_trailer(ctx, doc), 1);
 }
 
+static void showoutline(void)
+{
+	fz_outline *outline = fz_load_outline(ctx, (fz_document*)doc);
+	fz_output *out = NULL;
+
+	fz_var(out);
+	fz_try(ctx)
+	{
+		out = fz_new_output_with_file(ctx, stdout, 0);
+		fz_print_outline(ctx, out, outline);
+	}
+	fz_always(ctx)
+	{
+		fz_drop_output(ctx, out);
+		fz_drop_outline(ctx, outline);
+	}
+	fz_catch(ctx)
+	{
+		fz_rethrow(ctx);
+	}
+}
+
 int pdfshow_main(int argc, char **argv)
 {
 	char *password = NULL; /* don't throw errors if encrypted */
@@ -202,9 +224,9 @@ int pdfshow_main(int argc, char **argv)
 		switch (c)
 		{
 		case 'p': password = fz_optarg; break;
+		case 'o': output = fz_optarg; break;
 		case 'b': showbinary = 1; break;
 		case 'e': showdecode = 0; break;
-		case 'o': output = fz_optarg; break;
 		default: usage(); break;
 		}
 	}
@@ -252,6 +274,7 @@ int pdfshow_main(int argc, char **argv)
 			case 'x': showxref(); break;
 			case 'p': showpagetree(); break;
 			case 'g': showgrep(filename); break;
+			case 'o': showoutline(); break;
 			default: showobject(atoi(argv[fz_optind]), 0); break;
 			}
 			fz_optind++;
