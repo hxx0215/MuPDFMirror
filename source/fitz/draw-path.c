@@ -168,13 +168,50 @@ flatten_close(fz_context *ctx, void *arg_)
 	arg->c.y = arg->b.y;
 }
 
+static void
+flatten_rectto(fz_context *ctx, void *arg_, float x0, float y0, float x1, float y1)
+{
+	flatten_arg *arg = (flatten_arg *)arg_;
+	const fz_matrix *ctm = arg->ctm;
+
+	flatten_moveto(ctx, arg_, x0, y0);
+	/* In the case where we have an axis aligned rectangle, do some
+	 * horrid antidropout stuff. */
+	if (ctm->b == 0 && ctm->c == 0)
+	{
+		float tx0 = ctm->a * x0 + ctm->e;
+		float ty0 = ctm->d * y0 + ctm->f;
+		float tx1 = ctm->a * x1 + ctm->e;
+		float ty1 = ctm->d * y1 + ctm->f;
+		fz_insert_gel_rect(ctx, arg->gel, tx0, ty0, tx1, ty1);
+	}
+	else if (ctm->a == 0 && ctm->d == 0)
+	{
+		float tx0 = ctm->c * y0 + ctm->e;
+		float ty0 = ctm->b * x0 + ctm->f;
+		float tx1 = ctm->c * y1 + ctm->e;
+		float ty1 = ctm->b * x1 + ctm->f;
+		fz_insert_gel_rect(ctx, arg->gel, tx0, ty1, tx1, ty0);
+	}
+	else
+	{
+		flatten_lineto(ctx, arg_, x1, y0);
+		flatten_lineto(ctx, arg_, x1, y1);
+		flatten_lineto(ctx, arg_, x0, y1);
+		flatten_close(ctx, arg_);
+	}
+}
+
 static const fz_path_processor flatten_proc =
 {
 	flatten_moveto,
 	flatten_lineto,
 	flatten_curveto,
 	flatten_close,
-	flatten_quadto
+	flatten_quadto,
+	NULL,
+	NULL,
+	flatten_rectto
 };
 
 void
@@ -232,6 +269,58 @@ fz_add_line(fz_context *ctx, sctx *s, float x0, float y0, float x1, float y1)
 }
 
 static void
+fz_add_horiz_rect(fz_context *ctx, sctx *s, float x0, float y0, float x1, float y1)
+{
+	if (s->ctm->b == 0 && s->ctm->c == 0)
+	{
+		float tx0 = s->ctm->a * x0 + s->ctm->e;
+		float ty0 = s->ctm->d * y0 + s->ctm->f;
+		float tx1 = s->ctm->a * x1 + s->ctm->e;
+		float ty1 = s->ctm->d * y1 + s->ctm->f;
+		fz_insert_gel_rect(ctx, s->gel, tx1, ty1, tx0, ty0);
+	}
+	else if (s->ctm->a == 0 && s->ctm->d == 0)
+	{
+		float tx0 = s->ctm->c * y0 + s->ctm->e;
+		float ty0 = s->ctm->b * x0 + s->ctm->f;
+		float tx1 = s->ctm->c * y1 + s->ctm->e;
+		float ty1 = s->ctm->b * x1 + s->ctm->f;
+		fz_insert_gel_rect(ctx, s->gel, tx1, ty0, tx0, ty1);
+	}
+	else
+	{
+		fz_add_line(ctx, s, x0, y0, x1, y0);
+		fz_add_line(ctx, s, x1, y1, x0, y1);
+	}
+}
+
+static void
+fz_add_vert_rect(fz_context *ctx, sctx *s, float x0, float y0, float x1, float y1)
+{
+	if (s->ctm->b == 0 && s->ctm->c == 0)
+	{
+		float tx0 = s->ctm->a * x0 + s->ctm->e;
+		float ty0 = s->ctm->d * y0 + s->ctm->f;
+		float tx1 = s->ctm->a * x1 + s->ctm->e;
+		float ty1 = s->ctm->d * y1 + s->ctm->f;
+		fz_insert_gel_rect(ctx, s->gel, tx0, ty1, tx1, ty0);
+	}
+	else if (s->ctm->a == 0 && s->ctm->d == 0)
+	{
+		float tx0 = s->ctm->c * y0 + s->ctm->e;
+		float ty0 = s->ctm->b * x0 + s->ctm->f;
+		float tx1 = s->ctm->c * y1 + s->ctm->e;
+		float ty1 = s->ctm->b * x1 + s->ctm->f;
+		fz_insert_gel_rect(ctx, s->gel, tx0, ty0, tx1, ty1);
+	}
+	else
+	{
+		fz_add_line(ctx, s, x1, y0, x0, y0);
+		fz_add_line(ctx, s, x0, y1, x1, y1);
+	}
+}
+
+static void
 fz_add_arc(fz_context *ctx, sctx *s,
 	float xc, float yc,
 	float x0, float y0,
@@ -284,8 +373,19 @@ fz_add_line_stroke(fz_context *ctx, sctx *s, float ax, float ay, float bx, float
 	float dlx = dy * scale;
 	float dly = -dx * scale;
 
-	fz_add_line(ctx, s, ax - dlx, ay - dly, bx - dlx, by - dly);
-	fz_add_line(ctx, s, bx + dlx, by + dly, ax + dlx, ay + dly);
+	if (0 && dx == 0)
+	{
+		fz_add_vert_rect(ctx, s, ax - dlx, ay, bx + dlx, by);
+	}
+	else if (dy == 0)
+	{
+		fz_add_horiz_rect(ctx, s, ax, ay - dly, bx, by + dly);
+	}
+	else
+	{
+		fz_add_line(ctx, s, ax - dlx, ay - dly, bx - dlx, by - dly);
+		fz_add_line(ctx, s, bx + dlx, by + dly, ax + dlx, ay + dly);
+	}
 }
 
 static void

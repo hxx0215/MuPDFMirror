@@ -1,4 +1,4 @@
-.TH "MUTOOL" "1" "March 31, 2015"
+.TH "MUTOOL" "1" "April 2, 2015"
 .\" Please adjust this date whenever revising the manpage.
 .\" no hyphenation
 .nh
@@ -103,6 +103,18 @@ List form and postscript XObjects.
 .B pages
 Comma separated list of page numbers and ranges to include.
 
+.SH PAGES
+mutool pages [options] input.pdf [pages ...]
+.PP
+The pages command dumps information about the size and orientation
+of pages within the document.
+.TP
+.B \-p password
+Use the specified password if the file is encrypted.
+.TP
+.B pages
+Comma separated list of page numbers and ranges to include.
+
 .SH POSTER
 mutool poster [options] input.pdf [output.pdf]
 .PP
@@ -147,7 +159,7 @@ Print the cross reference table.
 .B 'trailer' or 't'
 Print the trailer dictionary.
 .TP
-.B 'pages' or 'p'
+.B 'pagetree' or 'p'
 List the object numbers for every page.
 .TP
 .B 'grep' or 'g'

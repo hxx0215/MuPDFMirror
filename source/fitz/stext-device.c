@@ -64,11 +64,21 @@ fz_text_char_bbox(fz_context *ctx, fz_rect *bbox, fz_text_span *span, int i)
 		max = &span->max;
 	else
 		max = &span->text[i+1].p;
-	a.x = 0;
-	a.y = span->ascender_max;
+	if (span->wmode == 0)
+	{
+		a.x = 0;
+		a.y = span->ascender_max;
+		d.x = 0;
+		d.y = span->descender_min;
+	}
+	else
+	{
+		a.x = span->ascender_max;
+		a.y = 0;
+		d.x = span->descender_min;
+		d.y = 0;
+	}
 	fz_transform_vector(&a, &span->transform);
-	d.x = 0;
-	d.y = span->descender_min;
 	fz_transform_vector(&d, &span->transform);
 	bbox->x0 = bbox->x1 = ch->p.x + a.x;
 	bbox->y0 = bbox->y1 = ch->p.y + a.y;
@@ -92,11 +102,21 @@ add_bbox_to_span(fz_text_span *span)
 
 	if (!span)
 		return;
-	a.x = 0;
-	a.y = span->ascender_max;
+	if (span->wmode == 0)
+	{
+		a.x = 0;
+		a.y = span->ascender_max;
+		d.x = 0;
+		d.y = span->descender_min;
+	}
+	else
+	{
+		a.x = span->ascender_max;
+		a.y = 0;
+		d.x = span->descender_min;
+		d.y = 0;
+	}
 	fz_transform_vector(&a, &span->transform);
-	d.x = 0;
-	d.y = span->descender_min;
 	fz_transform_vector(&d, &span->transform);
 	bbox->x0 = bbox->x1 = span->min.x + a.x;
 	bbox->y0 = bbox->y1 = span->min.y + a.y;
@@ -552,7 +572,7 @@ fz_add_text_char_imp(fz_context *ctx, fz_text_device *dev, fz_text_style *style,
 {
 	int can_append = 1;
 	int add_space = 0;
-	fz_point dir, ndir, p, q;
+	fz_point dir, ndir, p, q, r;
 	float size;
 	fz_point delta;
 	float spacing = 0;
@@ -566,7 +586,7 @@ fz_add_text_char_imp(fz_context *ctx, fz_text_device *dev, fz_text_style *style,
 	else
 	{
 		dir.x = 0;
-		dir.y = 1;
+		dir.y = -1;
 	}
 	fz_transform_vector(&dir, trm);
 	ndir = dir;
@@ -575,14 +595,45 @@ fz_add_text_char_imp(fz_context *ctx, fz_text_device *dev, fz_text_style *style,
 
 	size = fz_matrix_expansion(trm);
 
+	/* We need to identify where glyphs 'start' (p) and 'stop' (q).
+	 * Each glyph holds it's 'start' position, and the next glyph in the
+	 * span (or span->max if there is no next glyph) holds it's 'end'
+	 * position.
+	 *
+	 * For both horizontal and vertical motion, trm->{e,f} gives the
+	 * bottom left corner of the glyph.
+	 *
+	 * In horizontal mode:
+	 *   + p is bottom left.
+	 *   + q is the bottom right
+	 * In vertical mode:
+	 *   + p is top left (where it advanced from)
+	 *   + q is bottom left
+	 */
+	if (wmode == 0)
+	{
+		p.x = trm->e;
+		p.y = trm->f;
+		q.x = trm->e + adv * dir.x;
+		q.y = trm->f + adv * dir.y;
+	}
+	else
+	{
+		p.x = trm->e - adv * dir.x;
+		p.y = trm->f - adv * dir.y;
+		q.x = trm->e;
+		q.y = trm->f;
+	}
+
 	if (dev->cur_span == NULL ||
 		trm->a != dev->cur_span->transform.a || trm->b != dev->cur_span->transform.b ||
-		trm->c != dev->cur_span->transform.c || trm->d != dev->cur_span->transform.d)
+		trm->c != dev->cur_span->transform.c || trm->d != dev->cur_span->transform.d ||
+		dev->cur_span->wmode != wmode)
 	{
-		/* If the matrix has changed (or if we don't have a span at
-		 * all), then we can't append. */
+		/* If the matrix has changed, or the wmode is different (or
+		 * if we don't have a span at all), then we can't append. */
 #ifdef DEBUG_SPANS
-		printf("Transform changed\n");
+		printf("Transform/WMode changed\n");
 #endif
 		can_append = 0;
 	}
@@ -590,8 +641,8 @@ fz_add_text_char_imp(fz_context *ctx, fz_text_device *dev, fz_text_style *style,
 	{
 		/* Calculate how far we've moved since the end of the current
 		 * span. */
-		delta.x = trm->e - dev->cur_span->max.x;
-		delta.y = trm->f - dev->cur_span->max.y;
+		delta.x = p.x - dev->cur_span->max.x;
+		delta.y = p.y - dev->cur_span->max.y;
 
 		/* The transform has not changed, so we know we're in the same
 		 * direction. Calculate 2 distances; how far off the previous
@@ -635,8 +686,6 @@ fz_add_text_char_imp(fz_context *ctx, fz_text_device *dev, fz_text_style *style,
 	printf("%c%c append=%d space=%d size=%g spacing=%g base_offset=%g\n", dev->lastchar, c, can_append, add_space, size, spacing, base_offset);
 #endif
 
-	p.x = trm->e;
-	p.y = trm->f;
 	if (can_append == 0)
 	{
 		/* Start a new span */
@@ -647,14 +696,11 @@ fz_add_text_char_imp(fz_context *ctx, fz_text_device *dev, fz_text_style *style,
 	}
 	if (add_space)
 	{
-		q.x = - 0.2f;
-		q.y = 0;
-		fz_transform_point(&q, trm);
-		add_char_to_span(ctx, dev->cur_span, ' ', &p, &q, style);
+		r.x = - 0.2f;
+		r.y = 0;
+		fz_transform_point(&r, trm);
+		add_char_to_span(ctx, dev->cur_span, ' ', &p, &r, style);
 	}
-	/* Advance the matrix */
-	q.x = trm->e += adv * dir.x;
-	q.y = trm->f += adv * dir.y;
 	add_char_to_span(ctx, dev->cur_span, c, &p, &q, style);
 }
 
@@ -714,20 +760,28 @@ fz_text_extract(fz_context *ctx, fz_text_device *dev, fz_text *text, const fz_ma
 	if (text->len == 0)
 		return;
 
-	if (font->ft_face)
+	if (style->wmode == 0)
 	{
-		fz_lock(ctx, FZ_LOCK_FREETYPE);
-		err = FT_Set_Char_Size(font->ft_face, 64, 64, 72, 72);
-		if (err)
-			fz_warn(ctx, "freetype set character size: %s", ft_error_string(err));
-		ascender = (float)face->ascender / face->units_per_EM;
-		descender = (float)face->descender / face->units_per_EM;
-		fz_unlock(ctx, FZ_LOCK_FREETYPE);
+		if (font->ft_face)
+		{
+			fz_lock(ctx, FZ_LOCK_FREETYPE);
+			err = FT_Set_Char_Size(font->ft_face, 64, 64, 72, 72);
+			if (err)
+				fz_warn(ctx, "freetype set character size: %s", ft_error_string(err));
+			ascender = (float)face->ascender / face->units_per_EM;
+			descender = (float)face->descender / face->units_per_EM;
+			fz_unlock(ctx, FZ_LOCK_FREETYPE);
+		}
+		else if (font->t3procs && !fz_is_empty_rect(&font->bbox))
+		{
+			ascender = font->bbox.y1;
+			descender = font->bbox.y0;
+		}
 	}
-	else if (font->t3procs && !fz_is_empty_rect(&font->bbox))
+	else
 	{
-		ascender = font->bbox.y1;
-		descender = font->bbox.y0;
+		ascender = font->bbox.x1;
+		descender = font->bbox.x0;
 	}
 	style->ascender = ascender;
 	style->descender = descender;
@@ -744,26 +798,7 @@ fz_text_extract(fz_context *ctx, fz_text_device *dev, fz_text *text, const fz_ma
 		fz_concat(&trm, &tm, ctm);
 
 		/* Calculate bounding box and new pen position based on font metrics */
-		if (font->ft_face)
-		{
-			FT_Fixed ftadv = 0;
-			int mask = FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_IGNORE_TRANSFORM;
-
-			/* TODO: freetype returns broken vertical metrics */
-			/* if (text->wmode) mask |= FT_LOAD_VERTICAL_LAYOUT; */
-
-			fz_lock(ctx, FZ_LOCK_FREETYPE);
-			err = FT_Set_Char_Size(font->ft_face, 64, 64, 72, 72);
-			if (err)
-				fz_warn(ctx, "freetype set character size: %s", ft_error_string(err));
-			FT_Get_Advance(font->ft_face, text->items[i].gid, mask, &ftadv);
-			adv = ftadv / 65536.0f;
-			fz_unlock(ctx, FZ_LOCK_FREETYPE);
-		}
-		else
-		{
-			adv = font->t3widths[text->items[i].gid];
-		}
+		adv = fz_advance_glyph(ctx, font, text->items[i].gid);
 
 		/* Check for one glyph to many char mapping */
 		for (j = i + 1; j < text->len; j++)

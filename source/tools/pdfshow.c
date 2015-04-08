@@ -14,7 +14,7 @@ static int showcolumn;
 
 static void usage(void)
 {
-	fprintf(stderr, "usage: mutool show [options] file.pdf [grep] [xref] [trailer] [pages] [outline] [object numbers]\n");
+	fprintf(stderr, "usage: mutool show [options] file.pdf [grep] [xref] [trailer] [pagetree] [outline] [object numbers]\n");
 	fprintf(stderr, "\t-p -\tpassword\n");
 	fprintf(stderr, "\t-o -\toutput file\n");
 	fprintf(stderr, "\t-b\tprint streams as binary data\n");
@@ -37,7 +37,7 @@ static void showencrypt(void)
 
 	if (!doc)
 		fz_throw(ctx, FZ_ERROR_GENERIC, "no file specified");
-	encrypt = pdf_dict_gets(ctx, pdf_trailer(ctx, doc), "Encrypt");
+	encrypt = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME_Encrypt);
 	if (!encrypt)
 		fz_throw(ctx, FZ_ERROR_GENERIC, "document not encrypted");
 	fprintf(out, "encryption dictionary\n");
