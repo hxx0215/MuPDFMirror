@@ -201,7 +201,7 @@ FONT_GEN := $(GEN)/gen_font_base14.h $(GEN)/gen_font_cjk.h $(GEN)/gen_font_cjk_f
 
 include/mupdf/pdf.h : include/mupdf/pdf/name-table.h
 NAME_GEN := include/mupdf/pdf/name-table.h source/pdf/pdf-name-table.h
-$(NAME_GEN) : $(NAMEDUMP) resources/pdf/names.txt
+$(NAME_GEN) : resources/pdf/names.txt
 	$(QUIET_GEN) $(NAMEDUMP) resources/pdf/names.txt $(NAME_GEN)
 
 JAVASCRIPT_SRC := source/pdf/js/pdf-util.js
@@ -370,5 +370,10 @@ clean:
 	rm -rf $(OUT)
 nuke:
 	rm -rf build/* $(GEN) $(NAME_GEN)
+
+release:
+	$(MAKE) build=release
+debug:
+	$(MAKE) build=debug
 
 .PHONY: all clean nuke install third libs apps generate

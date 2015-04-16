@@ -493,6 +493,19 @@ static fz_html_flow *find_next_word(fz_html_flow *node, float *w)
 	return node;
 }
 
+static float find_accumulated_margins(fz_context *ctx, fz_html *box, float *w, float *h)
+{
+	while (box)
+	{
+		/* TODO: take into account collapsed margins */
+		*h += box->margin[T] + box->padding[T] + box->border[T];
+		*h += box->margin[B] + box->padding[B] + box->border[B];
+		*w += box->margin[L] + box->padding[L] + box->border[L];
+		*w += box->margin[R] + box->padding[R] + box->border[R];
+		box = box->up;
+	}
+}
+
 static void layout_flow(fz_context *ctx, fz_html *box, fz_html *top, float em, float page_h)
 {
 	fz_html_flow *node, *line_start, *word_start, *word_end, *line_end;
@@ -517,10 +530,18 @@ static void layout_flow(fz_context *ctx, fz_html *box, fz_html *top, float em, f
 		return;
 
 	for (node = box->flow_head; node; node = node->next)
+	{
 		if (node->type == FLOW_IMAGE)
-			measure_image(ctx, node, top->w, page_h);
+		{
+			float w = 0, h = 0;
+			find_accumulated_margins(ctx, box, &w, &h);
+			measure_image(ctx, node, top->w - w, page_h - h);
+		}
 		else
+		{
 			measure_word(ctx, node, em);
+		}
+	}
 
 	line_start = find_next_word(box->flow_head, &glue_w);
 	line_end = NULL;
@@ -675,7 +696,7 @@ static void draw_flow_box(fz_context *ctx, fz_html *box, float page_top, float p
 	{
 		if (node->type == FLOW_IMAGE)
 		{
-			if (node->y > page_bot || node->y + node->h < page_top)
+			if (node->y >= page_bot || node->y + node->h <= page_top)
 				continue;
 		}
 		else
@@ -848,7 +869,10 @@ html_load_css(fz_context *ctx, fz_archive *zip, const char *base_uri, fz_css_rul
 
 						buf = fz_read_archive_entry(ctx, zip, path);
 						fz_write_buffer_byte(ctx, buf, 0);
-						css = fz_parse_css(ctx, css, (char*)buf->data, path);
+						fz_try(ctx)
+							css = fz_parse_css(ctx, css, (char*)buf->data, path);
+						fz_catch(ctx)
+							fz_warn(ctx, "ignoring stylesheet %s", path);
 						fz_drop_buffer(ctx, buf);
 					}
 				}
@@ -857,7 +881,10 @@ html_load_css(fz_context *ctx, fz_archive *zip, const char *base_uri, fz_css_rul
 		if (tag && !strcmp(tag, "style"))
 		{
 			char *s = concat_text(ctx, node);
-			css = fz_parse_css(ctx, css, s, "<style>");
+			fz_try(ctx)
+				css = fz_parse_css(ctx, css, s, "<style>");
+			fz_catch(ctx)
+				fz_warn(ctx, "ignoring inline stylesheet");
 			fz_free(ctx, s);
 		}
 		if (fz_xml_down(node))
