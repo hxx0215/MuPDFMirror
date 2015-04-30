@@ -94,6 +94,17 @@ enum { TA_LEFT, TA_RIGHT, TA_CENTER, TA_JUSTIFY };
 enum { VA_BASELINE, VA_SUB, VA_SUPER, VA_TOP, VA_BOTTOM };
 enum { BS_NONE, BS_SOLID };
 
+enum {
+	LST_NONE,
+	LST_DISC, LST_CIRCLE, LST_SQUARE,
+	LST_DECIMAL, LST_DECIMAL_ZERO,
+	LST_LC_ROMAN, LST_UC_ROMAN,
+	LST_LC_GREEK, LST_UC_GREEK,
+	LST_LC_LATIN, LST_UC_LATIN,
+	LST_LC_ALPHA, LST_UC_ALPHA,
+	LST_ARMENIAN, LST_GEORGIAN,
+};
+
 enum { N_NUMBER='p', N_SCALE='m', N_PERCENT='%' };
 
 struct fz_css_number_s
@@ -114,13 +125,14 @@ struct fz_css_style_s
 	fz_css_number padding[4];
 	fz_css_number border_width[4];
 	fz_css_number text_indent;
-	int white_space;
-	int text_align;
-	int vertical_align;
-	int border_style;
+	char white_space;
+	char text_align;
+	char vertical_align;
+	char list_style_type;
+	char border_style[4];
 	fz_css_number line_height;
 	fz_css_color background_color;
-	fz_css_color border_color;
+	fz_css_color border_color[4];
 	fz_css_color color;
 	fz_font *font;
 };
@@ -140,9 +152,11 @@ struct fz_html_s
 	float padding[4];
 	float margin[4];
 	float border[4];
+	float em;
 	fz_html *up, *down, *last, *next;
 	fz_html_flow *flow_head, **flow_tail;
 	fz_css_style style;
+	int list_item;
 	int is_first_flow; /* for text-indent */
 };
 

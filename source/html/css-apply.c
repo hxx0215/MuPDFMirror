@@ -64,6 +64,30 @@ static const char *color_kw[] = {
 	"yellow",
 };
 
+static const char *list_style_type_kw[] = {
+	"armenian",
+	"circle",
+	"decimal",
+	"decimal-leading-zero",
+	"disc",
+	"georgian",
+	"lower-alpha",
+	"lower-greek",
+	"lower-latin",
+	"lower-roman",
+	"none",
+	"square",
+	"upper-alpha",
+	"upper-greek",
+	"upper-latin",
+	"upper-roman",
+};
+
+static const char *list_style_position_kw[] = {
+	"inside",
+	"outside",
+};
+
 static int
 keyword_in_list(const char *name, const char **list, int n)
 {
@@ -380,38 +404,81 @@ add_shorthand_border_width(fz_css_match *match, fz_css_value *value, int spec)
 }
 
 static void
-add_shorthand_border(fz_css_match *match, fz_css_value *value, int spec)
+add_shorthand_border_color(fz_css_match *match, fz_css_value *value, int spec)
+{
+	add_shorthand_trbl(match, value, spec,
+		"border-color-top", "border-color-right", "border-color-bottom", "border-color-left");
+}
+
+static void
+add_shorthand_border_style(fz_css_match *match, fz_css_value *value, int spec)
+{
+	add_shorthand_trbl(match, value, spec,
+		"border-style-top", "border-style-right", "border-style-bottom", "border-style-left");
+}
+
+static void
+add_shorthand_border(fz_css_match *match, fz_css_value *value, int spec, int T, int R, int B, int L)
 {
 	while (value)
 	{
 		if (value->type == CSS_COLOR)
 		{
-			add_property(match, "border-color", value, spec);
+			if (T) add_property(match, "border-color-top", value, spec);
+			if (R) add_property(match, "border-color-right", value, spec);
+			if (B) add_property(match, "border-color-bottom", value, spec);
+			if (L) add_property(match, "border-color-left", value, spec);
 		}
 		else if (value->type == CSS_KEYWORD)
 		{
 			if (keyword_in_list(value->data, border_width_kw, nelem(border_width_kw)))
 			{
-				add_property(match, "border-width-top", value, spec);
-				add_property(match, "border-width-right", value, spec);
-				add_property(match, "border-width-bottom", value, spec);
-				add_property(match, "border-width-left", value, spec);
+				if (T) add_property(match, "border-width-top", value, spec);
+				if (R) add_property(match, "border-width-right", value, spec);
+				if (B) add_property(match, "border-width-bottom", value, spec);
+				if (L) add_property(match, "border-width-left", value, spec);
 			}
 			else if (keyword_in_list(value->data, border_style_kw, nelem(border_style_kw)))
 			{
-				add_property(match, "border-style", value, spec);
+				if (T) add_property(match, "border-style-top", value, spec);
+				if (R) add_property(match, "border-style-right", value, spec);
+				if (B) add_property(match, "border-style-bottom", value, spec);
+				if (L) add_property(match, "border-style-left", value, spec);
 			}
 			else if (keyword_in_list(value->data, color_kw, nelem(color_kw)))
 			{
-				add_property(match, "border-color", value, spec);
+				if (T) add_property(match, "border-color-top", value, spec);
+				if (R) add_property(match, "border-color-right", value, spec);
+				if (B) add_property(match, "border-color-bottom", value, spec);
+				if (L) add_property(match, "border-color-left", value, spec);
 			}
 		}
 		else
 		{
-			add_property(match, "border-width-top", value, spec);
-			add_property(match, "border-width-right", value, spec);
-			add_property(match, "border-width-bottom", value, spec);
-			add_property(match, "border-width-left", value, spec);
+			if (T) add_property(match, "border-width-top", value, spec);
+			if (R) add_property(match, "border-width-right", value, spec);
+			if (B) add_property(match, "border-width-bottom", value, spec);
+			if (L) add_property(match, "border-width-left", value, spec);
+		}
+		value = value->next;
+	}
+}
+
+static void
+add_shorthand_list_style(fz_css_match *match, fz_css_value *value, int spec)
+{
+	while (value)
+	{
+		if (value->type == CSS_KEYWORD)
+		{
+			if (keyword_in_list(value->data, list_style_type_kw, nelem(list_style_type_kw)))
+			{
+				add_property(match, "list-style-type", value, spec);
+			}
+			else if (keyword_in_list(value->data, list_style_position_kw, nelem(list_style_position_kw)))
+			{
+				add_property(match, "list-style-position", value, spec);
+			}
 		}
 		value = value->next;
 	}
@@ -437,9 +504,44 @@ add_property(fz_css_match *match, const char *name, fz_css_value *value, int spe
 		add_shorthand_border_width(match, value, spec);
 		return;
 	}
+	if (!strcmp(name, "border-color"))
+	{
+		add_shorthand_border_color(match, value, spec);
+		return;
+	}
+	if (!strcmp(name, "border-style"))
+	{
+		add_shorthand_border_style(match, value, spec);
+		return;
+	}
 	if (!strcmp(name, "border"))
 	{
-		add_shorthand_border(match, value, spec);
+		add_shorthand_border(match, value, spec, 1, 1, 1, 1);
+		return;
+	}
+	if (!strcmp(name, "border-top"))
+	{
+		add_shorthand_border(match, value, spec, 1, 0, 0, 0);
+		return;
+	}
+	if (!strcmp(name, "border-right"))
+	{
+		add_shorthand_border(match, value, spec, 0, 1, 0, 0);
+		return;
+	}
+	if (!strcmp(name, "border-bottom"))
+	{
+		add_shorthand_border(match, value, spec, 0, 0, 1, 0);
+		return;
+	}
+	if (!strcmp(name, "border-left"))
+	{
+		add_shorthand_border(match, value, spec, 0, 0, 0, 1);
+		return;
+	}
+	if (!strcmp(name, "list-style"))
+	{
+		add_shorthand_list_style(match, value, spec);
 		return;
 	}
 
@@ -625,6 +727,19 @@ border_width_from_property(fz_css_match *match, const char *property)
 	return make_number(2, N_NUMBER); /* initial: 'medium' */
 }
 
+static int
+border_style_from_property(fz_css_match *match, const char *property)
+{
+	fz_css_value *value = value_from_property(match, property);
+	if (value)
+	{
+		if (!strcmp(value->data, "none")) return BS_NONE;
+		else if (!strcmp(value->data, "hidden")) return BS_NONE;
+		else if (!strcmp(value->data, "solid")) return BS_SOLID;
+	}
+	return BS_NONE;
+}
+
 float
 fz_from_css_number(fz_css_number number, float em, float width)
 {
@@ -751,10 +866,10 @@ white_space_from_property(fz_css_match *match)
 	if (value)
 	{
 		if (!strcmp(value->data, "normal")) return WS_NORMAL;
-		if (!strcmp(value->data, "pre")) return WS_PRE;
-		if (!strcmp(value->data, "nowrap")) return WS_NOWRAP;
-		if (!strcmp(value->data, "pre-wrap")) return WS_PRE_WRAP;
-		if (!strcmp(value->data, "pre-line")) return WS_PRE_LINE;
+		else if (!strcmp(value->data, "pre")) return WS_PRE;
+		else if (!strcmp(value->data, "nowrap")) return WS_NOWRAP;
+		else if (!strcmp(value->data, "pre-wrap")) return WS_PRE_WRAP;
+		else if (!strcmp(value->data, "pre-line")) return WS_PRE_LINE;
 	}
 	return WS_NORMAL;
 }
@@ -766,6 +881,7 @@ fz_default_css_style(fz_context *ctx, fz_css_style *style)
 	style->text_align = TA_LEFT;
 	style->vertical_align = VA_BASELINE;
 	style->white_space = WS_NORMAL;
+	style->list_style_type = LST_DISC;
 	style->font_size = make_number(1, N_SCALE);
 }
 
@@ -784,29 +900,20 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 	value = value_from_property(match, "text-align");
 	if (value)
 	{
-		if (!strcmp(value->data, "left"))
-			style->text_align = TA_LEFT;
-		if (!strcmp(value->data, "right"))
-			style->text_align = TA_RIGHT;
-		if (!strcmp(value->data, "center"))
-			style->text_align = TA_CENTER;
-		if (!strcmp(value->data, "justify"))
-			style->text_align = TA_JUSTIFY;
+		if (!strcmp(value->data, "left")) style->text_align = TA_LEFT;
+		else if (!strcmp(value->data, "right")) style->text_align = TA_RIGHT;
+		else if (!strcmp(value->data, "center")) style->text_align = TA_CENTER;
+		else if (!strcmp(value->data, "justify")) style->text_align = TA_JUSTIFY;
 	}
 
 	value = value_from_property(match, "vertical-align");
 	if (value)
 	{
-		if (!strcmp(value->data, "baseline"))
-			style->vertical_align = VA_BASELINE;
-		if (!strcmp(value->data, "sub"))
-			style->vertical_align = VA_SUB;
-		if (!strcmp(value->data, "super"))
-			style->vertical_align = VA_SUPER;
-		if (!strcmp(value->data, "top"))
-			style->vertical_align = VA_TOP;
-		if (!strcmp(value->data, "bottom"))
-			style->vertical_align = VA_BOTTOM;
+		if (!strcmp(value->data, "baseline")) style->vertical_align = VA_BASELINE;
+		else if (!strcmp(value->data, "sub")) style->vertical_align = VA_SUB;
+		else if (!strcmp(value->data, "super")) style->vertical_align = VA_SUPER;
+		else if (!strcmp(value->data, "top")) style->vertical_align = VA_TOP;
+		else if (!strcmp(value->data, "bottom")) style->vertical_align = VA_BOTTOM;
 	}
 
 	value = value_from_property(match, "font-size");
@@ -828,15 +935,25 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 		style->font_size = make_number(1, N_SCALE);
 	}
 
-	value = value_from_property(match, "border-style");
+	value = value_from_property(match, "list-style-type");
 	if (value)
 	{
-		if (!strcmp(value->data, "none"))
-			style->border_style = BS_NONE;
-		if (!strcmp(value->data, "hidden"))
-			style->border_style = BS_NONE;
-		if (!strcmp(value->data, "solid"))
-			style->border_style = BS_SOLID;
+		if (!strcmp(value->data, "none")) style->list_style_type = LST_NONE;
+		else if (!strcmp(value->data, "disc")) style->list_style_type = LST_DISC;
+		else if (!strcmp(value->data, "circle")) style->list_style_type = LST_CIRCLE;
+		else if (!strcmp(value->data, "square")) style->list_style_type = LST_SQUARE;
+		else if (!strcmp(value->data, "decimal")) style->list_style_type = LST_DECIMAL;
+		else if (!strcmp(value->data, "decimal-leading-zero")) style->list_style_type = LST_DECIMAL_ZERO;
+		else if (!strcmp(value->data, "lower-roman")) style->list_style_type = LST_LC_ROMAN;
+		else if (!strcmp(value->data, "upper-roman")) style->list_style_type = LST_UC_ROMAN;
+		else if (!strcmp(value->data, "lower-greek")) style->list_style_type = LST_LC_GREEK;
+		else if (!strcmp(value->data, "upper-greek")) style->list_style_type = LST_UC_GREEK;
+		else if (!strcmp(value->data, "lower-latin")) style->list_style_type = LST_LC_LATIN;
+		else if (!strcmp(value->data, "upper-latin")) style->list_style_type = LST_UC_LATIN;
+		else if (!strcmp(value->data, "lower-alpha")) style->list_style_type = LST_LC_ALPHA;
+		else if (!strcmp(value->data, "upper-alpha")) style->list_style_type = LST_UC_ALPHA;
+		else if (!strcmp(value->data, "armenian")) style->list_style_type = LST_ARMENIAN;
+		else if (!strcmp(value->data, "georgian")) style->list_style_type = LST_GEORGIAN;
 	}
 
 	style->line_height = number_from_property(match, "line-height", 1.2f, N_SCALE);
@@ -853,14 +970,23 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 	style->padding[2] = number_from_property(match, "padding-bottom", 0, N_NUMBER);
 	style->padding[3] = number_from_property(match, "padding-left", 0, N_NUMBER);
 
+	style->color = color_from_property(match, "color", black);
+	style->background_color = color_from_property(match, "background-color", transparent);
+
+	style->border_style[0] = border_style_from_property(match, "border-style-top");
+	style->border_style[1] = border_style_from_property(match, "border-style-right");
+	style->border_style[2] = border_style_from_property(match, "border-style-bottom");
+	style->border_style[3] = border_style_from_property(match, "border-style-left");
+
+	style->border_color[0] = color_from_property(match, "border-color-top", transparent);
+	style->border_color[1] = color_from_property(match, "border-color-right", transparent);
+	style->border_color[2] = color_from_property(match, "border-color-bottom", transparent);
+	style->border_color[3] = color_from_property(match, "border-color-left", transparent);
+
 	style->border_width[0] = border_width_from_property(match, "border-width-top");
 	style->border_width[1] = border_width_from_property(match, "border-width-right");
 	style->border_width[2] = border_width_from_property(match, "border-width-bottom");
 	style->border_width[3] = border_width_from_property(match, "border-width-left");
-
-	style->color = color_from_property(match, "color", black);
-	style->background_color = color_from_property(match, "background-color", transparent);
-	style->border_color = color_from_property(match, "border-color", style->color);
 
 	{
 		const char *font_family = string_from_property(match, "font-family", "serif");
