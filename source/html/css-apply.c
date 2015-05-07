@@ -400,21 +400,21 @@ static void
 add_shorthand_border_width(fz_css_match *match, fz_css_value *value, int spec)
 {
 	add_shorthand_trbl(match, value, spec,
-		"border-width-top", "border-width-right", "border-width-bottom", "border-width-left");
+		"border-top-width", "border-right-width", "border-bottom-width", "border-left-width");
 }
 
 static void
 add_shorthand_border_color(fz_css_match *match, fz_css_value *value, int spec)
 {
 	add_shorthand_trbl(match, value, spec,
-		"border-color-top", "border-color-right", "border-color-bottom", "border-color-left");
+		"border-top-color", "border-right-color", "border-bottom-color", "border-left-color");
 }
 
 static void
 add_shorthand_border_style(fz_css_match *match, fz_css_value *value, int spec)
 {
 	add_shorthand_trbl(match, value, spec,
-		"border-style-top", "border-style-right", "border-style-bottom", "border-style-left");
+		"border-top-style", "border-right-style", "border-bottom-style", "border-left-style");
 }
 
 static void
@@ -424,41 +424,41 @@ add_shorthand_border(fz_css_match *match, fz_css_value *value, int spec, int T, 
 	{
 		if (value->type == CSS_HASH)
 		{
-			if (T) add_property(match, "border-color-top", value, spec);
-			if (R) add_property(match, "border-color-right", value, spec);
-			if (B) add_property(match, "border-color-bottom", value, spec);
-			if (L) add_property(match, "border-color-left", value, spec);
+			if (T) add_property(match, "border-top-color", value, spec);
+			if (R) add_property(match, "border-right-color", value, spec);
+			if (B) add_property(match, "border-bottom-color", value, spec);
+			if (L) add_property(match, "border-left-color", value, spec);
 		}
 		else if (value->type == CSS_KEYWORD)
 		{
 			if (keyword_in_list(value->data, border_width_kw, nelem(border_width_kw)))
 			{
-				if (T) add_property(match, "border-width-top", value, spec);
-				if (R) add_property(match, "border-width-right", value, spec);
-				if (B) add_property(match, "border-width-bottom", value, spec);
-				if (L) add_property(match, "border-width-left", value, spec);
+				if (T) add_property(match, "border-top-width", value, spec);
+				if (R) add_property(match, "border-right-width", value, spec);
+				if (B) add_property(match, "border-bottom-width", value, spec);
+				if (L) add_property(match, "border-left-width", value, spec);
 			}
 			else if (keyword_in_list(value->data, border_style_kw, nelem(border_style_kw)))
 			{
-				if (T) add_property(match, "border-style-top", value, spec);
-				if (R) add_property(match, "border-style-right", value, spec);
-				if (B) add_property(match, "border-style-bottom", value, spec);
-				if (L) add_property(match, "border-style-left", value, spec);
+				if (T) add_property(match, "border-top-style", value, spec);
+				if (R) add_property(match, "border-right-style", value, spec);
+				if (B) add_property(match, "border-bottom-style", value, spec);
+				if (L) add_property(match, "border-left-style", value, spec);
 			}
 			else if (keyword_in_list(value->data, color_kw, nelem(color_kw)))
 			{
-				if (T) add_property(match, "border-color-top", value, spec);
-				if (R) add_property(match, "border-color-right", value, spec);
-				if (B) add_property(match, "border-color-bottom", value, spec);
-				if (L) add_property(match, "border-color-left", value, spec);
+				if (T) add_property(match, "border-top-color", value, spec);
+				if (R) add_property(match, "border-right-color", value, spec);
+				if (B) add_property(match, "border-bottom-color", value, spec);
+				if (L) add_property(match, "border-left-color", value, spec);
 			}
 		}
 		else
 		{
-			if (T) add_property(match, "border-width-top", value, spec);
-			if (R) add_property(match, "border-width-right", value, spec);
-			if (B) add_property(match, "border-width-bottom", value, spec);
-			if (L) add_property(match, "border-width-left", value, spec);
+			if (T) add_property(match, "border-top-width", value, spec);
+			if (R) add_property(match, "border-right-width", value, spec);
+			if (B) add_property(match, "border-bottom-width", value, spec);
+			if (L) add_property(match, "border-left-width", value, spec);
 		}
 		value = value->next;
 	}
@@ -603,16 +603,23 @@ fz_match_css(fz_context *ctx, fz_css_match *match, fz_css_rule *css, fz_xml *nod
 	s = fz_xml_att(node, "style");
 	if (s)
 	{
-		head = tail = prop = fz_parse_css_properties(ctx, s);
-		while (prop)
+		fz_try(ctx)
 		{
-			add_property(match, prop->name, prop->value, INLINE_SPECIFICITY);
-			tail = prop;
-			prop = prop->next;
+			head = tail = prop = fz_parse_css_properties(ctx, s);
+			while (prop)
+			{
+				add_property(match, prop->name, prop->value, INLINE_SPECIFICITY);
+				tail = prop;
+				prop = prop->next;
+			}
+			if (tail)
+				tail->next = css->garbage;
+			css->garbage = head;
 		}
-		if (tail)
-			tail->next = css->garbage;
-		css->garbage = head;
+		fz_catch(ctx)
+		{
+			fz_warn(ctx, "ignoring style attribute");
+		}
 	}
 }
 
@@ -701,6 +708,12 @@ number_from_value(fz_css_value *value, float initial, int initial_unit)
 		return make_number(x, N_NUMBER);
 	}
 
+	if (value->type == CSS_KEYWORD)
+	{
+		if (!strcmp(value->data, "auto"))
+			return make_number(0, N_AUTO);
+	}
+
 	return make_number(initial, initial_unit);
 }
 
@@ -748,6 +761,7 @@ fz_from_css_number(fz_css_number number, float em, float width)
 	case N_NUMBER: return number.value;
 	case N_SCALE: return number.value * em;
 	case N_PERCENT: return number.value * 0.01 * width;
+	case N_AUTO: return width;
 	}
 }
 
@@ -759,6 +773,7 @@ fz_from_css_number_scale(fz_css_number number, float scale, float em, float widt
 	case N_NUMBER: return number.value * scale;
 	case N_SCALE: return number.value * em;
 	case N_PERCENT: return number.value * 0.01 * width;
+	case N_AUTO: return width;
 	}
 }
 
@@ -885,6 +900,8 @@ fz_get_css_match_display(fz_css_match *match)
 			return DIS_BLOCK;
 		if (!strcmp(value->data, "list-item"))
 			return DIS_LIST_ITEM;
+		if (!strcmp(value->data, "inline-block"))
+			return DIS_INLINE_BLOCK;
 	}
 	return DIS_INLINE;
 }
@@ -913,6 +930,8 @@ fz_default_css_style(fz_context *ctx, fz_css_style *style)
 	style->white_space = WS_NORMAL;
 	style->list_style_type = LST_DISC;
 	style->font_size = make_number(1, N_SCALE);
+	style->width = make_number(0, N_AUTO);
+	style->height = make_number(0, N_AUTO);
 }
 
 void
@@ -990,6 +1009,9 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 
 	style->text_indent = number_from_property(match, "text-indent", 0, N_NUMBER);
 
+	style->width = number_from_property(match, "width", 0, N_AUTO);
+	style->height = number_from_property(match, "height", 0, N_AUTO);
+
 	style->margin[0] = number_from_property(match, "margin-top", 0, N_NUMBER);
 	style->margin[1] = number_from_property(match, "margin-right", 0, N_NUMBER);
 	style->margin[2] = number_from_property(match, "margin-bottom", 0, N_NUMBER);
@@ -1003,20 +1025,20 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 	style->color = color_from_property(match, "color", black);
 	style->background_color = color_from_property(match, "background-color", transparent);
 
-	style->border_style[0] = border_style_from_property(match, "border-style-top");
-	style->border_style[1] = border_style_from_property(match, "border-style-right");
-	style->border_style[2] = border_style_from_property(match, "border-style-bottom");
-	style->border_style[3] = border_style_from_property(match, "border-style-left");
+	style->border_style[0] = border_style_from_property(match, "border-top-style");
+	style->border_style[1] = border_style_from_property(match, "border-right-style");
+	style->border_style[2] = border_style_from_property(match, "border-bottom-style");
+	style->border_style[3] = border_style_from_property(match, "border-left-style");
 
-	style->border_color[0] = color_from_property(match, "border-color-top", style->color);
-	style->border_color[1] = color_from_property(match, "border-color-right", style->color);
-	style->border_color[2] = color_from_property(match, "border-color-bottom", style->color);
-	style->border_color[3] = color_from_property(match, "border-color-left", style->color);
+	style->border_color[0] = color_from_property(match, "border-top-color", style->color);
+	style->border_color[1] = color_from_property(match, "border-right-color", style->color);
+	style->border_color[2] = color_from_property(match, "border-bottom-color", style->color);
+	style->border_color[3] = color_from_property(match, "border-left-color", style->color);
 
-	style->border_width[0] = border_width_from_property(match, "border-width-top");
-	style->border_width[1] = border_width_from_property(match, "border-width-right");
-	style->border_width[2] = border_width_from_property(match, "border-width-bottom");
-	style->border_width[3] = border_width_from_property(match, "border-width-left");
+	style->border_width[0] = border_width_from_property(match, "border-top-width");
+	style->border_width[1] = border_width_from_property(match, "border-right-width");
+	style->border_width[2] = border_width_from_property(match, "border-bottom-width");
+	style->border_width[3] = border_width_from_property(match, "border-left-width");
 
 	{
 		const char *font_family = string_from_property(match, "font-family", "serif");
@@ -1123,27 +1145,4 @@ print_rules(fz_css_rule *rule)
 		print_rule(rule);
 		rule = rule->next;
 	}
-}
-
-void
-print_style(fz_css_style *style)
-{
-	printf("style {\n");
-	printf("\tfont-size = %g%c;\n", style->font_size.value, style->font_size.unit);
-	printf("\tfont = %s;\n", style->font->name);
-	printf("\tline-height = %g%c;\n", style->line_height.value, style->line_height.unit);
-	printf("\ttext-indent = %g%c;\n", style->text_indent.value, style->text_indent.unit);
-	printf("\ttext-align = %d;\n", style->text_align);
-	printf("\tvertical-align = %d;\n", style->vertical_align);
-	printf("\tmargin = %g%c %g%c %g%c %g%c;\n",
-		style->margin[0].value, style->margin[0].unit,
-		style->margin[1].value, style->margin[1].unit,
-		style->margin[2].value, style->margin[2].unit,
-		style->margin[3].value, style->margin[3].unit);
-	printf("\tpadding = %g%c %g%c %g%c %g%c;\n",
-		style->padding[0].value, style->padding[0].unit,
-		style->padding[1].value, style->padding[1].unit,
-		style->padding[2].value, style->padding[2].unit,
-		style->padding[3].value, style->padding[3].unit);
-	printf("}\n");
 }
