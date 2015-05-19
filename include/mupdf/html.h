@@ -89,10 +89,20 @@ struct fz_css_match_s
 
 enum { DIS_NONE, DIS_BLOCK, DIS_INLINE, DIS_LIST_ITEM, DIS_INLINE_BLOCK };
 enum { POS_STATIC, POS_RELATIVE, POS_ABSOLUTE, POS_FIXED };
-enum { WS_NORMAL, WS_PRE, WS_NOWRAP, WS_PRE_WRAP, WS_PRE_LINE };
 enum { TA_LEFT, TA_RIGHT, TA_CENTER, TA_JUSTIFY };
 enum { VA_BASELINE, VA_SUB, VA_SUPER, VA_TOP, VA_BOTTOM };
 enum { BS_NONE, BS_SOLID };
+
+enum {
+	WS_COLLAPSE = 1,
+	WS_ALLOW_BREAK_SPACE = 2,
+	WS_FORCE_BREAK_NEWLINE = 4,
+	WS_NORMAL = WS_COLLAPSE | WS_ALLOW_BREAK_SPACE,
+	WS_PRE = WS_FORCE_BREAK_NEWLINE,
+	WS_NOWRAP = WS_COLLAPSE,
+	WS_PRE_WRAP = WS_ALLOW_BREAK_SPACE | WS_FORCE_BREAK_NEWLINE,
+	WS_PRE_LINE = WS_COLLAPSE | WS_ALLOW_BREAK_SPACE | WS_FORCE_BREAK_NEWLINE
+};
 
 enum {
 	LST_NONE,
@@ -165,6 +175,7 @@ enum
 {
 	FLOW_WORD,
 	FLOW_GLUE,
+	FLOW_BREAK,
 	FLOW_IMAGE,
 };
 
@@ -173,7 +184,8 @@ struct fz_html_flow_s
 	int type;
 	float x, y, w, h, em;
 	fz_css_style *style;
-	char *text, *broken_text;
+	char *text;
+	int expand;
 	fz_image *image;
 	fz_html_flow *next;
 };
@@ -183,6 +195,7 @@ fz_css_property *fz_parse_css_properties(fz_context *ctx, const char *source);
 void fz_drop_css(fz_context *ctx, fz_css_rule *rule);
 
 void fz_match_css(fz_context *ctx, fz_css_match *match, fz_css_rule *rule, fz_xml *node);
+void fz_match_css_at_page(fz_context *ctx, fz_css_match *match, fz_css_rule *css);
 
 int fz_get_css_match_display(fz_css_match *node);
 void fz_default_css_style(fz_context *ctx, fz_css_style *style);
