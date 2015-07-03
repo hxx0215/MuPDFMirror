@@ -870,6 +870,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\source\fitz\getoptw.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\source\fitz\glyph.c"
 				>
 			</File>
@@ -958,6 +962,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\source\fitz\separation.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\source\fitz\shade.c"
 				>
 			</File>
@@ -1003,6 +1011,10 @@
 			</File>
 			<File
 				RelativePath="..\..\source\fitz\svg-device.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\source\fitz\tempfile.c"
 				>
 			</File>
 			<File
@@ -1482,6 +1494,10 @@
 				</File>
 				<File
 					RelativePath="..\..\include\mupdf\fitz\pixmap.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\include\mupdf\fitz\separation.h"
 					>
 				</File>
 				<File
