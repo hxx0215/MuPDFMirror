@@ -106,6 +106,7 @@ extern fz_document_handler img_document_handler;
 extern fz_document_handler tiff_document_handler;
 extern fz_document_handler html_document_handler;
 extern fz_document_handler epub_document_handler;
+extern fz_document_handler gprf_document_handler;
 
 void fz_register_document_handler(fz_context *ctx, const fz_document_handler *handler);
 
@@ -358,5 +359,19 @@ int fz_lookup_metadata(fz_context *ctx, fz_document *doc, const char *key, char 
 
 #define FZ_META_INFO_AUTHOR "info:Author"
 #define FZ_META_INFO_TITLE "info:Title"
+
+/*
+	fz_write_gproof_file: Given a currently open document, create a
+	gproof skeleton file from that document.
+
+	doc_filename: The name of the currently opened document file.
+
+	doc: The currently opened document.
+
+	filename: The filename of the desired gproof file.
+
+	res: The resolution at which proofing should be done.
+*/
+void fz_write_gproof_file(fz_context *ctx, const char *doc_filename, fz_document *doc, const char *filename, int res);
 
 #endif

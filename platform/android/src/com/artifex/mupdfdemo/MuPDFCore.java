@@ -6,12 +6,24 @@ import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.PointF;
 import android.graphics.RectF;
+import android.content.Intent;
 
 public class MuPDFCore
 {
 	/* load our native library */
+	private static boolean gs_so_available = false;
 	static {
 		System.loadLibrary("mupdf");
+		if (gprfSupportedInternal())
+		{
+			try {
+				System.loadLibrary("gs");
+				gs_so_available = true;
+			}
+			catch (UnsatisfiedLinkError e) {
+				gs_so_available = false;
+			}
+		}
 	}
 
 	/* Readable members */
@@ -25,6 +37,7 @@ public class MuPDFCore
 	private final boolean wasOpenedFromBuffer;
 
 	/* The native functions */
+	private static native boolean gprfSupportedInternal();
 	private native long openFile(String filename);
 	private native long openBuffer(String magic);
 	private native String fileFormatInternal();
@@ -77,6 +90,8 @@ public class MuPDFCore
 	private native long createCookie();
 	private native void destroyCookie(long cookie);
 	private native void abortCookie(long cookie);
+	private native String startProofInternal();
+	private native void endProofInternal(String filename);
 
 	public native boolean javascriptSupported();
 
@@ -345,5 +360,19 @@ public class MuPDFCore
 
 	public synchronized void save() {
 		saveInternal();
+	}
+
+	public synchronized String startProof() {
+		return startProofInternal();
+	}
+
+	public synchronized void endProof(String filename) {
+		endProofInternal(filename);
+	}
+
+	public static boolean gprfSupported() {
+		if (gs_so_available == false)
+			return false;
+		return gprfSupportedInternal();
 	}
 }

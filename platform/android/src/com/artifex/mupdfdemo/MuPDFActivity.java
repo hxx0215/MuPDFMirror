@@ -50,6 +50,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private final int    OUTLINE_REQUEST=0;
 	private final int    PRINT_REQUEST=1;
 	private final int    FILEPICK_REQUEST=2;
+	private final int    PROOF_REQUEST=3;
 	private MuPDFCore    core;
 	private String       mFileName;
 	private MuPDFReaderView mDocView;
@@ -75,6 +76,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private ImageButton  mSearchFwd;
 	private EditText     mSearchText;
 	private SearchTask   mSearchTask;
+	private ImageButton  mProofButton;
 	private AlertDialog.Builder mAlertBuilder;
 	private boolean    mLinkHighlight = false;
 	private final Handler mHandler = new Handler();
@@ -83,6 +85,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private AsyncTask<Void,Void,MuPDFAlert> mAlertTask;
 	private AlertDialog mAlertDialog;
 	private FilePicker mFilePicker;
+	private String       mProofFile;
 
 	public void createAlertWaiter() {
 		mAlertsActive = true;
@@ -621,6 +624,12 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		case FILEPICK_REQUEST:
 			if (mFilePicker != null && resultCode == RESULT_OK)
 				mFilePicker.onPick(data.getData());
+		case PROOF_REQUEST:
+			if (mProofFile != null)
+			{
+				core.endProof(mProofFile);
+				mProofFile = null;
+			}
 		}
 		super.onActivityResult(requestCode, resultCode, data);
 	}
@@ -879,10 +888,14 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		mSearchText = (EditText)mButtonsView.findViewById(R.id.searchText);
 		mLinkButton = (ImageButton)mButtonsView.findViewById(R.id.linkButton);
 		mMoreButton = (ImageButton)mButtonsView.findViewById(R.id.moreButton);
+		mProofButton = (ImageButton)mButtonsView.findViewById(R.id.proofButton);
 		mTopBarSwitcher.setVisibility(View.INVISIBLE);
 		mPageNumberView.setVisibility(View.INVISIBLE);
 		mInfoView.setVisibility(View.INVISIBLE);
 		mPageSlider.setVisibility(View.INVISIBLE);
+		if (!core.gprfSupported()) {
+			mProofButton.setVisibility(View.INVISIBLE);
+		}
 	}
 
 	public void OnMoreButtonClick(View v) {
@@ -897,6 +910,15 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 
 	public void OnPrintButtonClick(View v) {
 		printDoc();
+	}
+
+	public void OnProofButtonClick(View v) {
+		mProofFile = core.startProof();
+		Uri uri = Uri.parse("file://"+mProofFile);
+		Intent intent = new Intent(this,MuPDFActivity.class);
+		intent.setAction(Intent.ACTION_VIEW);
+		intent.setData(uri);
+		startActivityForResult(intent, PROOF_REQUEST);
 	}
 
 	public void OnCopyTextButtonClick(View v) {
