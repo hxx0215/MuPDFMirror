@@ -1,12 +1,25 @@
+#ifdef SUPPORT_GPROOF
+/* Choose whether to call gs via an exe or via an API */
+#if defined(__ANDROID__) || defined(GSVIEW_WIN)
+#define USE_GS_API
+#endif
+/* GSVIEW on Windows does not support stdout stderr */
+#ifdef GSVIEW_WIN
+#define GS_API_NULL_STDIO
+#endif
+
 #include "mupdf/fitz.h"
+#ifdef USE_GS_API
+#include "iapi.h"
+#endif
 
 typedef struct gprf_document_s gprf_document;
 typedef struct gprf_chapter_s gprf_chapter;
 typedef struct gprf_page_s gprf_page;
 
-/* Choose whether to call gs via an exe or via an API */
-#ifdef __ANDROID__
-#define USE_GS_API
+/* Quality trumps speed for this file */
+#ifndef SLOWCMYK
+#define SLOWCMYK
 #endif
 
 enum
@@ -153,93 +166,126 @@ static inline unsigned char *cmyk_to_rgba(unsigned char *out, uint32_t c, uint32
 	uint32_t r, g, b;
 #ifdef SLOWCMYK /* FP version originally from poppler */
 	uint32_t x;
-	uint32_t cm = (c * m)>>16;
-	uint32_t c1m = m - cm;
-	uint32_t cm1 = c - cm;
-	uint32_t c1m1 = 65536 - m - cm1;
-	uint32_t c1m1y = (c1m1 * y)>>16;
-	uint32_t c1m1y1 = c1m1 - c1m1y;
-	uint32_t c1my = (c1m * y)>>16;
-	uint32_t c1my1 = c1m - c1my;
-	uint32_t cm1y = (cm1 * y)>>16;
-	uint32_t cm1y1 = cm1 - cm1y;
-	uint32_t cmy = (cm * y)>>16;
-	uint32_t cmy1 = cm - cmy;
+	uint32_t cm, c1m, cm1, c1m1;
+	uint32_t c1m1y, c1m1y1, c1my, c1my1, cm1y, cm1y1, cmy, cmy1;
+
+	/* We use some tricks here:
+	 *    x + (x>>15)
+	 * converts x from 0..65535 to 0..65536
+	 *    (A * B)>>16
+	 * multiplies A (0..65535) and B (0..65536) to give a 0...65535 result.
+	 * (This relies on A and B being unsigned).
+	 *
+	 * We also rely on the fact that if:
+	 *    C = (A * B)>> 16
+	 * for A (0..65535) and B (0..65536) then A - C is also in (0..65535)
+	 * as C cannot possibly be any larger than A.
+	 */
+	cm = (c * (m + (m>>15)))>>16;
+	c1m = m - cm;
+	cm1 = c - cm;
+	c1m1 = 65535 - m - cm1; /* Need to clamp for underflow here */
+	if ((int)c1m1 < 0)
+		c1m1 = 0;
+	y += (y>>15);
+	c1m1y = (c1m1 * y)>>16;
+	c1m1y1 = c1m1 - c1m1y;
+	c1my = (c1m * y)>>16;
+	c1my1 = c1m - c1my;
+	cm1y = (cm1 * y)>>16;
+	cm1y1 = cm1 - cm1y;
+	cmy = (cm * y)>>16;
+	cmy1 = cm - cmy;
 
 #define CONST16(x) ((int)(x * 65536.0 + 0.5))
 
+	k += (k>>15); /* Move k to be 0..65536 */
+
 	/* this is a matrix multiplication, unrolled for performance */
-	x = (c1m1y1 * k)>>16;		/* 0 0 0 1 */
+	x = (c1m1y1 * k)>>16;	/* 0 0 0 1 */
 	r = g = b = c1m1y1 - x;	/* 0 0 0 0 */
 	r += (CONST16(0.1373) * x)>>16;
 	g += (CONST16(0.1216) * x)>>16;
 	b += (CONST16(0.1255) * x)>>16;
 
-	x = c1m1y * k;		/* 0 0 1 1 */
+	x = (c1m1y * k)>>16;	/* 0 0 1 1 */
 	r += (CONST16(0.1098) * x)>>16;
 	g += (CONST16(0.1020) * x)>>16;
 	x = c1m1y - x;		/* 0 0 1 0 */
 	r += x;
 	g += (CONST16(0.9490) * x)>>16;
 
-	x = c1my1 * k;		/* 0 1 0 1 */
+	x = (c1my1 * k)>>16;	/* 0 1 0 1 */
 	r += (CONST16(0.1412) * x)>>16;
 	x = c1my1 - x;		/* 0 1 0 0 */
 	r += (CONST16(0.9255) * x)>>16;
 	b += (CONST16(0.5490) * x)>>16;
 
-	x = c1my * k;		/* 0 1 1 1 */
+	x = (c1my * k)>>16;	/* 0 1 1 1 */
 	r += (CONST16(0.1333) * x)>>16;
 	x = c1my - x;		/* 0 1 1 0 */
 	r += (CONST16(0.9294) * x)>>16;
 	g += (CONST16(0.1098) * x)>>16;
 	b += (CONST16(0.1412) * x)>>16;
 
-	x = cm1y1 * k;		/* 1 0 0 1 */
+	x = (cm1y1 * k)>>16;	/* 1 0 0 1 */
 	g += (CONST16(0.0588) * x)>>16;
 	b += (CONST16(0.1412) * x)>>16;
 	x = cm1y1 - x;		/* 1 0 0 0 */
 	g += (CONST16(0.6784) * x)>>16;
 	b += (CONST16(0.9373) * x)>>16;
 
-	x = cm1y * k;		/* 1 0 1 1 */
+	x = (cm1y * k)>>16;	/* 1 0 1 1 */
 	g += (CONST16(0.0745) * x)>>16;
 	x = cm1y - x;		/* 1 0 1 0 */
 	g += (CONST16(0.6510) * x)>>16;
 	b += (CONST16(0.3137) * x)>>16;
 
-	x = cmy1 * k;		/* 1 1 0 1 */
+	x = (cmy1 * k)>>16;	/* 1 1 0 1 */
 	b += (CONST16(0.0078) * x)>>16;
 	x = cmy1 - x;		/* 1 1 0 0 */
 	r += (CONST16(0.1804) * x)>>16;
 	g += (CONST16(0.1922) * x)>>16;
 	b += (CONST16(0.5725) * x)>>16;
 
-	x = cmy * (1-k);	/* 1 1 1 0 */
+	x = (cmy * (65536-k))>>16;	/* 1 1 1 0 */
 	r += (CONST16(0.2118) * x)>>16;
 	g += (CONST16(0.2119) * x)>>16;
 	b += (CONST16(0.2235) * x)>>16;
+	/* I have convinced myself that r, g, b cannot have underflowed at
+	 * thus point. I have not convinced myself that they won't have
+	 * overflowed though. */
+	r >>= 8;
+	if (r > 255)
+		r = 255;
+	g >>= 8;
+	if (g > 255)
+		g = 255;
+	b >>= 8;
+	if (b > 255)
+		b = 255;
 #else
 	k = 65536 - k;
 	r = k - c;
 	g = k - m;
 	b = k - y;
-#endif
+
 	r >>= 8;
-	if (r < 0)
+	if ((int)r < 0)
 		r = 0;
 	else if (r > 255)
 		r = 255;
 	g >>= 8;
-	if (g < 0)
+	if ((int)g < 0)
 		g = 0;
 	else if (g > 255)
 		g = 255;
 	b >>= 8;
-	if (b < 0)
+	if ((int)b < 0)
 		b = 0;
 	else if (b > 255)
 		b = 255;
+#endif
 
 	*out++ = r;
 	*out++ = g;
@@ -353,24 +399,25 @@ gprf_get_pixmap(fz_context *ctx, fz_image *image_, int w, int h, int *l2factor)
 			}
 			else
 			{
-				int c, m, y, k;
-
-				c = m = y = k = 0;
 				for (n = 0; n < len; n++)
 				{
+					int c, m, y, k;
+
+					c = m = y = k = 0;
 					for (i = 3; i < num_seps; i++)
 					{
 						int v;
-						if (read_sep[n] != 1)
+						if (read_sep[i] != 1)
 							continue;
 						v = data[i * decode_chunk_size + n];
+						v += (v>>7);
 						c += v * equiv[i][0];
 						m += v * equiv[i][1];
 						y += v * equiv[i][2];
 						k += v * equiv[i][3];
 					}
+					out = cmyk_to_rgba(out, c, m, y, k);
 				}
-				out = cmyk_to_rgba(out, c, m, y, k);
 			}
 		}
 	}
@@ -440,6 +487,20 @@ fz_system(fz_context *ctx, const char *cmd)
 		fz_throw(ctx, FZ_ERROR_GENERIC, "child process reported error %d", ret);
 }
 
+#ifdef GS_API_NULL_STDIO
+static int GSDLLCALL
+gsdll_stdout(void *instance, const char *str, int len)
+{
+	return len;
+}
+
+static int GSDLLCALL
+gsdll_stderr(void *instance, const char *str, int len)
+{
+	return len;
+}
+#endif
+
 static void
 generate_page(fz_context *ctx, gprf_page *page)
 {
@@ -454,9 +515,9 @@ generate_page(fz_context *ctx, gprf_page *page)
 	fz_try(ctx)
 	{
 #ifdef USE_GS_API
-		void **instance;
+		void *instance;
 		int code;
-		char *argv[] = { "gs", "-sDEVICE=gproof", NULL, "-o", NULL, NULL, NULL, NULL };
+		char *argv[] = { "gs", "-sDEVICE=gproof", NULL, "-o", NULL, NULL, NULL, NULL, NULL };
 		char arg_res[32];
 		char arg_fp[32];
 		char arg_lp[32];
@@ -468,12 +529,15 @@ generate_page(fz_context *ctx, gprf_page *page)
 		argv[5] = arg_fp;
 		sprintf(arg_lp, "-dLastPage=%d", page->number+1);
 		argv[6] = arg_lp;
-		argv[7] = doc->pdf_filename;
+		argv[7] = "-I%rom%Resource/Init/";
+		argv[8] = doc->pdf_filename;
 
 		code = gsapi_new_instance(&instance, ctx);
 		if (code < 0)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "GS startup failed: %d", code);
-
+#ifdef GS_API_NULL_STDIO
+		gsapi_set_stdio(instance, NULL, gsdll_stdout, gsdll_stderr);
+#endif
 		code = gsapi_init_with_args(instance, sizeof(argv)/sizeof(*argv), argv);
 
 		gsapi_delete_instance(instance);
@@ -515,38 +579,38 @@ read_tiles(fz_context *ctx, gprf_page *page)
 
 	fz_try(ctx)
 	{
-		val = fz_read_int32le(ctx, file);
+		val = fz_read_int32_le(ctx, file);
 		if (val != 0x46505347)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected signature in GSPF file");
 
-		val = fz_read_int16le(ctx, file);
+		val = fz_read_int16_le(ctx, file);
 		if (val != 1)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected version in GSPF file");
 
-		val = fz_read_int16le(ctx, file);
+		val = fz_read_int16_le(ctx, file);
 		if (val != 0)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected compression in GSPF file");
 
-		val = fz_read_int32le(ctx, file);
+		val = fz_read_int32_le(ctx, file);
 		if (val != page->width)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected width in GSPF file");
 
-		val = fz_read_int32le(ctx, file);
+		val = fz_read_int32_le(ctx, file);
 		if (val != page->height)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected height in GSPF file");
 
-		val = fz_read_int16le(ctx, file);
+		val = fz_read_int16_le(ctx, file);
 		if (val != 8)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected bpc in GSPF file");
 
-		num_seps = fz_read_int16le(ctx, file);
+		num_seps = fz_read_int16_le(ctx, file);
 		if (num_seps < 0 || num_seps > FZ_MAX_SEPARATIONS)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Unexpected number of separations in GSPF file");
 
-		offset = fz_read_int64le(ctx, file); /* Ignore the ICC for now */
+		offset = fz_read_int64_le(ctx, file); /* Ignore the ICC for now */
 
 		/* Read the table offset */
-		offset = fz_read_int64le(ctx, file);
+		offset = fz_read_int64_le(ctx, file);
 
 		/* Skip to the separations */
 		fz_seek(ctx, file, 64, SEEK_SET);
@@ -554,9 +618,9 @@ read_tiles(fz_context *ctx, gprf_page *page)
 		for (i = 0; i < num_seps; i++)
 		{
 			char blatter[4096];
-			int32_t rgba = fz_read_int32le(ctx, file);
-			int32_t cmyk = fz_read_int32le(ctx, file);
-			fz_read_line(ctx, file, blatter, sizeof(blatter));
+			int32_t rgba = fz_read_int32_le(ctx, file);
+			int32_t cmyk = fz_read_int32_le(ctx, file);
+			fz_read_string(ctx, file, blatter, sizeof(blatter));
 			fz_add_separation(ctx, page->separations, rgba, cmyk, blatter);
 		}
 
@@ -567,7 +631,7 @@ read_tiles(fz_context *ctx, gprf_page *page)
 		page->tiles = fz_calloc(ctx, num_tiles, sizeof(fz_image *));
 
 		i = 0;
-		off = fz_read_int64le(ctx, file);
+		off = fz_read_int64_le(ctx, file);
 		for (y = 0; y < page->tile_height; y++)
 		{
 			for (x = 0; x < page->tile_width; x++)
@@ -578,7 +642,7 @@ read_tiles(fz_context *ctx, gprf_page *page)
 				for (j = 0; j < num_seps+3; j++)
 				{
 					offsets[j] = (fz_off_t)off;
-					off = fz_read_int64le(ctx, file);
+					off = fz_read_int64_le(ctx, file);
 				}
 
 				page->tiles[i] = fz_new_gprf_image(ctx, page, i, offsets, (fz_off_t)off);
@@ -654,6 +718,26 @@ gprf_run_page(fz_context *ctx, fz_page *page_, fz_device *dev, const fz_matrix *
 	fz_render_flags(ctx, dev, 0, FZ_DEVFLAG_GRIDFIT_AS_TILED);
 }
 
+static int gprf_count_separations(fz_context *ctx, fz_page *page_)
+{
+	gprf_page *page = (gprf_page *)page_;
+
+	return fz_count_separations(ctx, page->separations);
+}
+
+static void gprf_control_separation(fz_context *ctx, fz_page *page_, int sep, int disable)
+{
+	gprf_page *page = (gprf_page *)page_;
+
+	fz_control_separation(ctx, page->separations, sep, disable);
+}
+
+static const char *gprf_get_separation(fz_context *ctx, fz_page *page_, int sep, uint32_t *rgba, uint32_t*cmyk)
+{
+	gprf_page *page = (gprf_page *)page_;
+
+	return fz_get_separation(ctx, page->separations, sep, rgba, cmyk);
+}
 
 static fz_page *
 gprf_load_page(fz_context *ctx, fz_document *doc_, int number)
@@ -666,6 +750,9 @@ gprf_load_page(fz_context *ctx, fz_document *doc_, int number)
 		page->super.bound_page = gprf_bound_page;
 		page->super.run_page_contents = gprf_run_page;
 		page->super.drop_page_imp = gprf_drop_page_imp;
+		page->super.count_separations = gprf_count_separations;
+		page->super.control_separation = gprf_control_separation;
+		page->super.get_separation = gprf_get_separation;
 		page->doc = (gprf_document *)fz_keep_document(ctx, &doc->super);
 		page->number = number;
 		page->separations = fz_new_separations(ctx);
@@ -712,27 +799,27 @@ gprf_open_document_with_stream(fz_context *ctx, fz_stream *file)
 		int i;
 		char buf[4096];
 
-		val = fz_read_int32le(ctx, file);
+		val = fz_read_int32_le(ctx, file);
 		if (val != 0x4f525047)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Invalid file signature in gproof file");
 		val  = fz_read_byte(ctx, file);
 		val |= fz_read_byte(ctx, file)<<8;
 		if (val != 1)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Invalid version in gproof file");
-		doc->res = fz_read_int32le(ctx, file);
+		doc->res = fz_read_int32_le(ctx, file);
 		if (doc->res < 0)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Invalid resolution in gproof file");
-		doc->num_pages = fz_read_int32le(ctx, file);
+		doc->num_pages = fz_read_int32_le(ctx, file);
 		if (doc->num_pages < 0)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "Invalid resolution in gproof file");
 		doc->page_dims = fz_calloc(ctx, doc->num_pages, sizeof(*doc->page_dims));
 
 		for (i = 0; i < doc->num_pages; i++)
 		{
-			doc->page_dims[i].w = fz_read_int32le(ctx, file);
-			doc->page_dims[i].h = fz_read_int32le(ctx, file);
+			doc->page_dims[i].w = fz_read_int32_le(ctx, file);
+			doc->page_dims[i].h = fz_read_int32_le(ctx, file);
 		}
-		fz_read_line(ctx, file, buf, sizeof(buf));
+		fz_read_string(ctx, file, buf, sizeof(buf));
 		doc->pdf_filename = fz_strdup(ctx, buf);
 	}
 	fz_catch(ctx)
@@ -783,3 +870,4 @@ fz_document_handler gprf_document_handler =
 	&gprf_open_document,
 	&gprf_open_document_with_stream
 };
+#endif
