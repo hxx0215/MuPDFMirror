@@ -517,7 +517,7 @@ generate_page(fz_context *ctx, gprf_page *page)
 #ifdef USE_GS_API
 		void *instance;
 		int code;
-		char *argv[] = { "gs", "-sDEVICE=gproof", NULL, "-o", NULL, NULL, NULL, NULL, NULL };
+		char *argv[] = { "gs", "-sDEVICE=gprf", NULL, "-o", NULL, NULL, NULL, NULL, NULL, NULL};
 		char arg_res[32];
 		char arg_fp[32];
 		char arg_lp[32];
@@ -529,8 +529,9 @@ generate_page(fz_context *ctx, gprf_page *page)
 		argv[5] = arg_fp;
 		sprintf(arg_lp, "-dLastPage=%d", page->number+1);
 		argv[6] = arg_lp;
-		argv[7] = "-I%rom%Resource/Init/";
-		argv[8] = doc->pdf_filename;
+		argv[7] = "-sPostRenderProfile=srgb.icc";
+		argv[8] = "-I%rom%Resource/Init/";
+		argv[9] = doc->pdf_filename;
 
 		code = gsapi_new_instance(&instance, ctx);
 		if (code < 0)
@@ -545,7 +546,7 @@ generate_page(fz_context *ctx, gprf_page *page)
 			fz_throw(ctx, FZ_ERROR_GENERIC, "GS run failed: %d", code);
 #else
 		/* Invoke gs to convert to a temp file. */
-		sprintf(gs_command, "gswin32c.exe -sDEVICE=gproof -r%d -o \"%s\" -dFirstPage=%d -dLastPage=%d %s",
+		sprintf(gs_command, "gswin32c.exe -sDEVICE=gprf -r%d -o \"%s\" -sPostRenderProfile=srgb.icc -I\%rom\%Resource/Init/ -dFirstPage=%d -dLastPage=%d %s",
 			doc->res, filename, page->number+1, page->number+1, doc->pdf_filename);
 		fz_system(ctx, gs_command);
 #endif
@@ -783,6 +784,15 @@ gprf_close_document(fz_context *ctx, fz_document *doc_)
 	fz_free(ctx, doc);
 }
 
+static int
+gprf_lookup_metadata(fz_context *ctx, fz_document *doc, const char *key, char *buf, int size)
+{
+	if (!strcmp(key, "format"))
+		return fz_snprintf(buf, size, "GPROOF");
+
+	return -1;
+}
+
 static fz_document *
 gprf_open_document_with_stream(fz_context *ctx, fz_stream *file)
 {
@@ -792,6 +802,7 @@ gprf_open_document_with_stream(fz_context *ctx, fz_stream *file)
 	doc->super.close = gprf_close_document;
 	doc->super.count_pages = gprf_count_pages;
 	doc->super.load_page = gprf_load_page;
+	doc->super.lookup_metadata = gprf_lookup_metadata;
 
 	fz_try(ctx)
 	{
