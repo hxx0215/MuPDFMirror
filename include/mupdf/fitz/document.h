@@ -300,6 +300,13 @@ void fz_run_page_contents(fz_context *ctx, fz_page *page, fz_device *dev, const 
 void fz_run_annot(fz_context *ctx, fz_page *page, fz_annot *annot, fz_device *dev, const fz_matrix *transform, fz_cookie *cookie);
 
 /*
+	fz_keep_page: Keep a reference to a loaded page.
+
+	Does not throw exceptions.
+*/
+fz_page *fz_keep_page(fz_context *ctx, fz_page *page);
+
+/*
 	fz_drop_page: Free a loaded page.
 
 	Does not throw exceptions.
@@ -392,7 +399,12 @@ const char *fz_get_separation_on_page(fz_context *ctx, fz_page *page, int sep, u
 	filename: The filename of the desired gproof file.
 
 	res: The resolution at which proofing should be done.
+
+	print_profile: The filename of the ICC profile for the printer we are proofing
+
+	display_profile: The filename of the ICC profile for our display device
 */
-void fz_write_gproof_file(fz_context *ctx, const char *doc_filename, fz_document *doc, const char *filename, int res);
+void fz_write_gproof_file(fz_context *ctx, const char *doc_filename, fz_document *doc, const char *filename, int res,
+	const char *print_profile, const char *display_profile);
 
 #endif
