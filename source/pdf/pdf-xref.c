@@ -2760,8 +2760,8 @@ pdf_document *pdf_create_document(fz_context *ctx)
 		pdf_dict_put_drop(ctx, pages, PDF_NAME_Type, PDF_NAME_Pages);
 		pdf_dict_put_drop(ctx, pages, PDF_NAME_Count, pdf_new_int(ctx, doc, 0));
 		pdf_dict_put_drop(ctx, pages, PDF_NAME_Kids, pdf_new_array(ctx, doc, 1));
-		pdf_set_populating_xref_trailer(ctx, doc, trailer);
-		pdf_drop_obj(ctx, trailer);
+		/* Set the trailer of the final xref section.  */
+		doc->xref_sections[0].trailer = trailer;
 	}
 	fz_catch(ctx)
 	{
