@@ -113,6 +113,45 @@ static void add_flow_image(fz_context *ctx, fz_html *top, fz_css_style *style, f
 	add_flow_glue(ctx, top, style, "", 0);
 }
 
+static int iscjk(int c)
+{
+	if (c >= 0x3200 && c <= 0x9FFF) return 1; /* CJK Blocks */
+	if (c >= 0xFF00 && c <= 0xFFEF) return 1; /* Halfwidth and Fullwidth Forms */
+	return 0;
+}
+
+static int not_at_bol(int cat, int c)
+{
+	if (cat == UCDN_GENERAL_CATEGORY_PF) return 1;
+	if (cat == UCDN_GENERAL_CATEGORY_PE) return 1;
+	if (c == ')' || c == 0xFF09) return 1;
+	if (c == ']' || c == 0xFF3D) return 1;
+	if (c == '}' || c == 0xFF5D) return 1;
+	if (c == '>' || c == 0xFF1E) return 1;
+	if (c == ',' || c == 0xFF0C) return 1;
+	if (c == '.' || c == 0xFF0E) return 1;
+	if (c == ':' || c == 0xFF1A) return 1;
+	if (c == ';' || c == 0xFF1B) return 1;
+	if (c == '?' || c == 0xFF1F) return 1;
+	if (c == '!' || c == 0xFF01) return 1;
+	if (c == '%' || c == 0xFF05) return 1;
+	return 0;
+}
+
+static int not_at_eol(int cat, int c)
+{
+	if (cat == UCDN_GENERAL_CATEGORY_PI) return 1;
+	if (cat == UCDN_GENERAL_CATEGORY_PS) return 1;
+	if (c == '(' || c == 0xFF08) return 1;
+	if (c == '[' || c == 0xFF3B) return 1;
+	if (c == '{' || c == 0xFF5B) return 1;
+	if (c == '<' || c == 0xFF1C) return 1;
+	if (c == '$' || c == 0xFF04) return 1;
+	if (c >= 0xFFE0 || c == 0xFFE1) return 1; /* cent, pound */
+	if (c == 0xFFE5 || c == 0xFFE6) return 1; /* yen, won */
+	return 0;
+}
+
 static void generate_text(fz_context *ctx, fz_html *box, const char *text)
 {
 	fz_html *flow;
@@ -149,10 +188,29 @@ static void generate_text(fz_context *ctx, fz_html *box, const char *text)
 		}
 		else
 		{
-			const char *mark = text++;
+			const char *mark = text;
+			int c, addglue = 0;
 			while (*text && !iswhite(*text))
-				++text;
-			add_flow_word(ctx, flow, &box->style, mark, text);
+			{
+				/* TODO: Unicode Line Breaking Algorithm (UAX #14) */
+				text += fz_chartorune(&c, text);
+				if (iscjk(c))
+				{
+					int cat = ucdn_get_general_category(c);
+					if (addglue && !not_at_bol(cat, c))
+						add_flow_glue(ctx, flow, &box->style, "", 0);
+					add_flow_word(ctx, flow, &box->style, mark, text);
+					if (!not_at_eol(cat, c))
+						addglue = 1;
+					mark = text;
+				}
+				else
+				{
+					addglue = 0;
+				}
+			}
+			if (mark != text)
+				add_flow_word(ctx, flow, &box->style, mark, text);
 		}
 	}
 }
@@ -807,9 +865,12 @@ static void draw_flow_box(fz_context *ctx, fz_html *box, float page_top, float p
 				g = fz_encode_character(ctx, node->style->font, c);
 				if (g)
 				{
-					if (!text)
-						text = fz_new_text(ctx, node->style->font, &trm, 0);
-					fz_add_text(ctx, text, g, c, x, y);
+					if (node->style->visibility == V_VISIBLE)
+					{
+						if (!text)
+							text = fz_new_text(ctx, node->style->font, &trm, 0);
+						fz_add_text(ctx, text, g, c, x, y);
+					}
 					x += fz_advance_glyph(ctx, node->style->font, g) * node->em;
 				}
 				else
@@ -817,9 +878,12 @@ static void draw_flow_box(fz_context *ctx, fz_html *box, float page_top, float p
 					g = fz_encode_character(ctx, node->style->fallback, c);
 					if (g)
 					{
-						if (!falltext)
-							falltext = fz_new_text(ctx, node->style->fallback, &trm, 0);
-						fz_add_text(ctx, falltext, g, c, x, y);
+						if (node->style->visibility == V_VISIBLE)
+						{
+							if (!falltext)
+								falltext = fz_new_text(ctx, node->style->fallback, &trm, 0);
+							fz_add_text(ctx, falltext, g, c, x, y);
+						}
 					}
 					x += fz_advance_glyph(ctx, node->style->fallback, g) * node->em;
 				}
@@ -838,10 +902,13 @@ static void draw_flow_box(fz_context *ctx, fz_html *box, float page_top, float p
 		}
 		else if (node->type == FLOW_IMAGE)
 		{
-			fz_matrix local_ctm = *ctm;
-			fz_pre_translate(&local_ctm, node->x, node->y);
-			fz_pre_scale(&local_ctm, node->w, node->h);
-			fz_fill_image(ctx, dev, node->image, &local_ctm, 1);
+			if (node->style->visibility == V_VISIBLE)
+			{
+				fz_matrix local_ctm = *ctm;
+				fz_pre_translate(&local_ctm, node->x, node->y);
+				fz_pre_scale(&local_ctm, node->w, node->h);
+				fz_fill_image(ctx, dev, node->image, &local_ctm, 1);
+			}
 		}
 	}
 }
@@ -1044,20 +1111,21 @@ static void draw_block_box(fz_context *ctx, fz_html *box, float page_top, float 
 	if (y0 > page_bot || y1 < page_top)
 		return;
 
-	draw_rect(ctx, dev, ctm, box->style.background_color, x0, y0, x1, y1);
-
-	if (border[T] > 0)
-		draw_rect(ctx, dev, ctm, box->style.border_color[T], x0 - border[L], y0 - border[T], x1 + border[R], y0);
-	if (border[B] > 0)
-		draw_rect(ctx, dev, ctm, box->style.border_color[B], x0 - border[L], y1, x1 + border[R], y1 + border[B]);
-	if (border[L] > 0)
-		draw_rect(ctx, dev, ctm, box->style.border_color[L], x0 - border[L], y0 - border[T], x0, y1 + border[B]);
-	if (border[R] > 0)
-		draw_rect(ctx, dev, ctm, box->style.border_color[R], x1, y0 - border[T], x1 + border[R], y1 + border[B]);
-
-	if (box->list_item)
+	if (box->style.visibility == V_VISIBLE)
 	{
-		draw_list_mark(ctx, box, page_top, page_bot, dev, ctm, box->list_item);
+		draw_rect(ctx, dev, ctm, box->style.background_color, x0, y0, x1, y1);
+
+		if (border[T] > 0)
+			draw_rect(ctx, dev, ctm, box->style.border_color[T], x0 - border[L], y0 - border[T], x1 + border[R], y0);
+		if (border[B] > 0)
+			draw_rect(ctx, dev, ctm, box->style.border_color[B], x0 - border[L], y1, x1 + border[R], y1 + border[B]);
+		if (border[L] > 0)
+			draw_rect(ctx, dev, ctm, box->style.border_color[L], x0 - border[L], y0 - border[T], x0, y1 + border[B]);
+		if (border[R] > 0)
+			draw_rect(ctx, dev, ctm, box->style.border_color[R], x1, y0 - border[T], x1 + border[R], y1 + border[B]);
+
+		if (box->list_item)
+			draw_list_mark(ctx, box, page_top, page_bot, dev, ctm, box->list_item);
 	}
 
 	for (box = box->down; box; box = box->next)

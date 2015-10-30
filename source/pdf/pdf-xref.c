@@ -577,7 +577,11 @@ pdf_read_start_xref(fz_context *ctx, pdf_document *doc)
 				i ++;
 			doc->startxref = 0;
 			while (i < n && buf[i] >= '0' && buf[i] <= '9')
+			{
+				if (doc->startxref >= FZ_OFF_MAX/10)
+					fz_throw(ctx, FZ_ERROR_GENERIC, "startxref too large");
 				doc->startxref = doc->startxref * 10 + (buf[i++] - '0');
+			}
 			if (doc->startxref != 0)
 				return;
 			break;
@@ -585,6 +589,31 @@ pdf_read_start_xref(fz_context *ctx, pdf_document *doc)
 	}
 
 	fz_throw(ctx, FZ_ERROR_GENERIC, "cannot find startxref");
+}
+
+static void
+fz_skip_space(fz_context *ctx, fz_stream *stm)
+{
+	do
+	{
+		int c = fz_peek_byte(ctx, stm);
+		if (c > 32 && c != EOF)
+			return;
+		(void)fz_read_byte(ctx, stm);
+	}
+	while (1);
+}
+
+static int fz_skip_string(fz_context *ctx, fz_stream *stm, const char *str)
+{
+	while (*str)
+	{
+		int c = fz_peek_byte(ctx, stm);
+		if (c == EOF || c != *str++)
+			return 1;
+		(void)fz_read_byte(ctx, stm);
+	}
+	return 0;
 }
 
 /*
@@ -608,9 +637,10 @@ pdf_xref_size_from_old_trailer(fz_context *ctx, pdf_document *doc, pdf_lexbuf *b
 	/* Record the current file read offset so that we can reinstate it */
 	ofs = fz_tell(ctx, doc->file);
 
-	fz_read_line(ctx, doc->file, buf->scratch, buf->size);
-	if (strncmp(buf->scratch, "xref", 4) != 0)
+	fz_skip_space(ctx, doc->file);
+	if (fz_skip_string(ctx, doc->file, "xref"))
 		fz_throw(ctx, FZ_ERROR_GENERIC, "cannot find xref marker");
+	fz_skip_space(ctx, doc->file);
 
 	while (1)
 	{
@@ -752,9 +782,10 @@ pdf_read_old_xref(fz_context *ctx, pdf_document *doc, pdf_lexbuf *buf)
 	int xref_len = pdf_xref_size_from_old_trailer(ctx, doc, buf);
 	pdf_xref_entry *table;
 
-	fz_read_line(ctx, file, buf->scratch, buf->size);
-	if (strncmp(buf->scratch, "xref", 4) != 0)
+	fz_skip_space(ctx, doc->file);
+	if (fz_skip_string(ctx, doc->file, "xref"))
 		fz_throw(ctx, FZ_ERROR_GENERIC, "cannot find xref marker");
+	fz_skip_space(ctx, doc->file);
 
 	while (1)
 	{
@@ -1151,7 +1182,7 @@ pdf_load_xref(fz_context *ctx, pdf_document *doc, pdf_lexbuf *buf)
 	}
 	/* broken pdfs where first object is not free */
 	else if (entry->type != 'f')
-		fz_throw(ctx, FZ_ERROR_GENERIC, "first object in xref is not free");
+		fz_warn(ctx, "first object in xref is not free");
 
 	/* broken pdfs where object offsets are out of range */
 	xref_len = pdf_xref_len(ctx, doc);
@@ -1807,7 +1838,7 @@ pdf_obj_read(fz_context *ctx, pdf_document *doc, fz_off_t *offset, int *nump, pd
 	 * whenever we read an object it should just go into the
 	 * previous xref.
 	 */
-	tok = pdf_repair_obj(ctx, doc, buf, &stmofs, NULL, NULL, NULL, page, &newtmpofs);
+	tok = pdf_repair_obj(ctx, doc, buf, &stmofs, NULL, NULL, NULL, page, &newtmpofs, NULL);
 
 	do /* So we can break out of it */
 	{
@@ -2600,7 +2631,7 @@ pdf_load_hint_object(fz_context *ctx, pdf_document *doc)
 			tok = pdf_lex(ctx, doc->file, buf);
 			if (tok != PDF_TOK_OBJ)
 				break;
-			(void)pdf_repair_obj(ctx, doc, buf, &tmpofs, NULL, NULL, NULL, &page, &tmpofs);
+			(void)pdf_repair_obj(ctx, doc, buf, &tmpofs, NULL, NULL, NULL, &page, &tmpofs, NULL);
 			pdf_load_hints(ctx, doc, num, gen);
 		}
 	}

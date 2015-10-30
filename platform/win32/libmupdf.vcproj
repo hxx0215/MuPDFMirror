@@ -171,6 +171,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
+				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories="..\..\scripts\freetype;..\..\scripts\jpeg;..\..\scripts\openjpeg;..\..\include;..\..\ucdn;..\..\generated;..\..\thirdparty\jbig2dec;..\..\thirdparty\jpeg;..\..\thirdparty\openjpeg\libopenjpeg;..\..\thirdparty\zlib;..\..\thirdparty\freetype\include;..\..\thirdparty\mujs"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
@@ -687,6 +688,10 @@
 			</File>
 			<File
 				RelativePath="..\..\source\xps\xps-image.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\source\xps\xps-link.c"
 				>
 			</File>
 			<File
