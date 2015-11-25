@@ -2,6 +2,26 @@
 
 #include "mupdf/pdf.h" /* for pdf specifics and forms */
 
+enum
+{
+	/* Screen furniture: aggregate size of unusable space from title bars, task bars, window borders, etc */
+	SCREEN_FURNITURE_W = 20,
+	SCREEN_FURNITURE_H = 40,
+
+	/* Default EPUB/HTML layout dimensions */
+	DEFAULT_LAYOUT_W = 450,
+	DEFAULT_LAYOUT_H = 600,
+	DEFAULT_LAYOUT_EM = 12,
+
+	/* Default UI sizes */
+	DEFAULT_UI_FONTSIZE = 15,
+	DEFAULT_UI_BASELINE = 14,
+	DEFAULT_UI_LINEHEIGHT = 18,
+};
+
+#define DEFAULT_WINDOW_W (612 * currentzoom / 72)
+#define DEFAULT_WINDOW_H (792 * currentzoom / 72)
+
 struct ui ui;
 fz_context *ctx = NULL;
 GLFWwindow *window = NULL;
@@ -139,7 +159,8 @@ static int canvas_y = 0, canvas_h = 100;
 static struct texture annot_tex[256];
 static int annot_count = 0;
 
-static int screen_w = 1, screen_h = 1;
+static int screen_w = 1280, screen_h = 720;
+static int window_w = 1, window_h = 1;
 
 static int oldpage = 0, currentpage = 0;
 static float oldzoom = DEFRES, currentzoom = DEFRES;
@@ -478,7 +499,7 @@ static void do_outline(fz_outline *node, int outline_w)
 	int total_h;
 
 	outline_w -= ui.lineheight;
-	outline_h = screen_h;
+	outline_h = window_h;
 	total_h = measure_outline_height(outline);
 
 	if (ui.x >= 0 && ui.x < outline_w && ui.y >= 0 && ui.y < outline_h)
@@ -696,8 +717,8 @@ static void toggle_fullscreen(void)
 
 static void shrinkwrap(void)
 {
-	int w = page_tex.w + canvas_x;
-	int h = page_tex.h + canvas_y;
+	int w = fz_mini(page_tex.w + canvas_x, screen_w - SCREEN_FURNITURE_W);
+	int h = fz_mini(page_tex.h + canvas_y, screen_h - SCREEN_FURNITURE_H);
 	if (isfullscreen)
 		toggle_fullscreen();
 	glfwSetWindowSize(window, w, h);
@@ -1040,13 +1061,13 @@ static void do_canvas(void)
 
 static void run_main_loop(void)
 {
-	glViewport(0, 0, screen_w, screen_h);
+	glViewport(0, 0, window_w, window_h);
 	glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0, screen_w, screen_h, 0, -1, 1);
+	glOrtho(0, window_w, window_h, 0, -1, 1);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -1093,8 +1114,8 @@ static void run_main_loop(void)
 
 	do_app();
 
-	canvas_w = screen_w - canvas_x;
-	canvas_h = screen_h - canvas_y;
+	canvas_w = window_w - canvas_x;
+	canvas_h = window_h - canvas_y;
 
 	do_canvas();
 
@@ -1236,8 +1257,8 @@ static void on_scroll(GLFWwindow *window, double x, double y)
 static void on_reshape(GLFWwindow *window, int w, int h)
 {
 	showinfo = 0;
-	screen_w = w;
-	screen_h = h;
+	window_w = w;
+	window_h = h;
 	ui_needs_update = 1;
 }
 
@@ -1269,11 +1290,12 @@ int main_utf8(int argc, char **argv)
 int main(int argc, char **argv)
 #endif
 {
+	const GLFWvidmode *video_mode;
 	char filename[2048];
 	char *password = "";
-	float layout_w = 450;
-	float layout_h = 600;
-	float layout_em = 12;
+	float layout_w = DEFAULT_LAYOUT_W;
+	float layout_h = DEFAULT_LAYOUT_H;
+	float layout_em = DEFAULT_LAYOUT_EM;
 	char *layout_css = NULL;
 	int c;
 
@@ -1325,9 +1347,13 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	video_mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+	screen_w = video_mode->width;
+	screen_h = video_mode->height;
+
 	glfwSetErrorCallback(on_error);
 
-	window = glfwCreateWindow(800, 1000, filename, NULL, NULL);
+	window = glfwCreateWindow(DEFAULT_WINDOW_W, DEFAULT_WINDOW_H, filename, NULL, NULL);
 	if (!window) {
 		fprintf(stderr, "cannot create glfw window\n");
 		exit(1);
@@ -1352,9 +1378,9 @@ int main(int argc, char **argv)
 
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
 
-	ui.fontsize = 15;
-	ui.baseline = 14;
-	ui.lineheight = 18;
+	ui.fontsize = DEFAULT_UI_FONTSIZE;
+	ui.baseline = DEFAULT_UI_BASELINE;
+	ui.lineheight = DEFAULT_UI_LINEHEIGHT;
 
 	ui_init_fonts(ctx, ui.fontsize);
 
@@ -1387,7 +1413,7 @@ int main(int argc, char **argv)
 	glfwSetKeyCallback(window, on_key);
 	glfwSetWindowRefreshCallback(window, on_display);
 
-	glfwGetFramebufferSize(window, &screen_w, &screen_h);
+	glfwGetFramebufferSize(window, &window_w, &window_h);
 
 	ui_needs_update = 1;
 
