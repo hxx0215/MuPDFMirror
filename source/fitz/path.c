@@ -1338,9 +1338,8 @@ void fz_trim_path(fz_context *ctx, fz_path *path)
 	}
 }
 
-#ifndef NDEBUG
 void
-fz_print_path(fz_context *ctx, FILE *out, fz_path *path, int indent)
+fz_print_path(fz_context *ctx, fz_output *out, fz_path *path, int indent)
 {
 	float x, y;
 	int i = 0, k = 0;
@@ -1350,46 +1349,46 @@ fz_print_path(fz_context *ctx, FILE *out, fz_path *path, int indent)
 		uint8_t cmd = path->cmds[i++];
 
 		for (n = 0; n < indent; n++)
-			fputc(' ', out);
+			fz_putc(ctx, out, ' ');
 		switch (cmd)
 		{
 		case FZ_MOVETO:
 		case FZ_MOVETOCLOSE:
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g m%s\n", x, y, cmd == FZ_MOVETOCLOSE ? " z" : "");
+			fz_printf(ctx, out, "%g %g m%s\n", x, y, cmd == FZ_MOVETOCLOSE ? " z" : "");
 			break;
 		case FZ_LINETO:
 		case FZ_LINETOCLOSE:
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g l%s\n", x, y, cmd == FZ_LINETOCLOSE ? " z" : "");
+			fz_printf(ctx, out, "%g %g l%s\n", x, y, cmd == FZ_LINETOCLOSE ? " z" : "");
 			break;
 		case FZ_DEGENLINETO:
 		case FZ_DEGENLINETOCLOSE:
-			fprintf(out, "d%s\n", cmd == FZ_DEGENLINETOCLOSE ? " z" : "");
+			fz_printf(ctx, out, "d%s\n", cmd == FZ_DEGENLINETOCLOSE ? " z" : "");
 			break;
 		case FZ_HORIZTO:
 		case FZ_HORIZTOCLOSE:
 			x = path->coords[k++];
-			fprintf(out, "%g h%s\n", x, cmd == FZ_HORIZTOCLOSE ? " z" : "");
+			fz_printf(ctx, out, "%g h%s\n", x, cmd == FZ_HORIZTOCLOSE ? " z" : "");
 			break;
 		case FZ_VERTTOCLOSE:
 		case FZ_VERTTO:
 			y = path->coords[k++];
-			fprintf(out, "%g i%s\n", y, cmd == FZ_VERTTOCLOSE ? " z" : "");
+			fz_printf(ctx, out, "%g i%s\n", y, cmd == FZ_VERTTOCLOSE ? " z" : "");
 			break;
 		case FZ_CURVETOCLOSE:
 		case FZ_CURVETO:
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g ", x, y);
+			fz_printf(ctx, out, "%g %g ", x, y);
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g ", x, y);
+			fz_printf(ctx, out, "%g %g ", x, y);
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g c%s\n", x, y, cmd == FZ_CURVETOCLOSE ? " z" : "");
+			fz_printf(ctx, out, "%g %g c%s\n", x, y, cmd == FZ_CURVETOCLOSE ? " z" : "");
 			break;
 		case FZ_CURVETOVCLOSE:
 		case FZ_CURVETOV:
@@ -1397,23 +1396,22 @@ fz_print_path(fz_context *ctx, FILE *out, fz_path *path, int indent)
 		case FZ_CURVETOY:
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g ", x, y);
+			fz_printf(ctx, out, "%g %g ", x, y);
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g %c%s\n", x, y, (cmd == FZ_CURVETOVCLOSE || cmd == FZ_CURVETOV ? 'v' : 'y'), (cmd == FZ_CURVETOVCLOSE || cmd == FZ_CURVETOYCLOSE) ? " z" : "");
+			fz_printf(ctx, out, "%g %g %c%s\n", x, y, (cmd == FZ_CURVETOVCLOSE || cmd == FZ_CURVETOV ? 'v' : 'y'), (cmd == FZ_CURVETOVCLOSE || cmd == FZ_CURVETOYCLOSE) ? " z" : "");
 			break;
 		case FZ_RECTTO:
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g ", x, y);
+			fz_printf(ctx, out, "%g %g ", x, y);
 			x = path->coords[k++];
 			y = path->coords[k++];
-			fprintf(out, "%g %g r\n", x, y);
+			fz_printf(ctx, out, "%g %g r\n", x, y);
 			break;
 		}
 	}
 }
-#endif
 
 const fz_stroke_state fz_default_stroke_state = {
 	-2, /* -2 is the magic number we use when we have stroke states stored on the stack */
@@ -1521,4 +1519,128 @@ fz_stroke_state *
 fz_unshare_stroke_state(fz_context *ctx, fz_stroke_state *shared)
 {
 	return fz_unshare_stroke_state_with_dash_len(ctx, shared, shared->dash_len);
+}
+
+static void *
+clone_block(fz_context *ctx, void *block, size_t len)
+{
+	void *target;
+
+	if (len == 0 || block == NULL)
+		return NULL;
+
+	target = fz_malloc(ctx, len);
+	memcpy(target, block, len);
+	return target;
+}
+
+fz_path *
+fz_clone_path(fz_context *ctx, fz_path *path)
+{
+	fz_path *new_path;
+
+	assert(ctx != NULL);
+
+	if (ctx == NULL || path == NULL)
+		return NULL;
+
+	new_path = fz_malloc_struct(ctx, fz_path);
+	new_path->refs = 1;
+	new_path->packed = FZ_PATH_UNPACKED;
+	fz_try(ctx)
+	{
+		switch(path->packed)
+		{
+		case FZ_PATH_UNPACKED:
+		case FZ_PATH_PACKED_OPEN:
+			new_path->cmd_len = path->cmd_len;
+			new_path->cmd_cap = path->cmd_cap;
+			new_path->cmds = clone_block(ctx, path->cmds, path->cmd_cap);
+			new_path->coord_len = path->coord_len;
+			new_path->coord_cap = path->coord_cap;
+			new_path->coords = clone_block(ctx, path->coords, sizeof(float)*path->coord_cap);
+			new_path->current = path->current;
+			new_path->begin = path->begin;
+			break;
+		case FZ_PATH_PACKED_FLAT:
+			{
+				uint8_t *data;
+				float *xy;
+				int i;
+				fz_packed_path *ppath = (fz_packed_path *)path;
+
+				new_path->cmd_len = ppath->cmd_len;
+				new_path->cmd_cap = ppath->cmd_len;
+				new_path->coord_len = ppath->coord_len;
+				new_path->coord_cap = ppath->coord_len;
+				data = (uint8_t *)&ppath[1];
+				new_path->coords = clone_block(ctx, data, sizeof(float)*path->coord_cap);
+				data += sizeof(float) * path->coord_cap;
+				new_path->cmds = clone_block(ctx, data, path->cmd_cap);
+				xy = new_path->coords;
+				for (i = 0; i < new_path->cmd_len; i++)
+				{
+					switch (new_path->cmds[i])
+					{
+					case FZ_MOVETOCLOSE:
+					case FZ_MOVETO:
+						new_path->current.x = *xy++;
+						new_path->current.y = *xy++;
+						new_path->begin.x = new_path->current.x;
+						new_path->begin.y = new_path->current.y;
+						break;
+					case FZ_CURVETO:
+						xy += 2;
+						/* fallthrough */
+					case FZ_CURVETOV:
+					case FZ_CURVETOY:
+					case FZ_QUADTO:
+						/* fallthrough */
+						xy += 2;
+					case FZ_LINETO:
+						new_path->current.x = *xy++;
+						new_path->current.y = *xy++;
+						break;
+					case FZ_DEGENLINETO:
+						break;
+					case FZ_HORIZTO:
+						new_path->current.x = *xy++;
+						break;
+					case FZ_VERTTO:
+						new_path->current.y = *xy++;
+						break;
+					case FZ_RECTTO:
+						xy += 2;
+						break;
+					case FZ_CURVETOCLOSE:
+						xy += 2;
+						/* fallthrough */
+					case FZ_CURVETOVCLOSE:
+					case FZ_CURVETOYCLOSE:
+					case FZ_QUADTOCLOSE:
+					case FZ_LINETOCLOSE:
+						xy++;
+						/* fallthrough */
+					case FZ_HORIZTOCLOSE:
+					case FZ_VERTTOCLOSE:
+						xy++;
+						/* fallthrough */
+					case FZ_DEGENLINETOCLOSE:
+						new_path->current.x = new_path->begin.x;
+						new_path->current.y = new_path->begin.y;
+						break;
+					}
+				}
+			}
+		default:
+			fz_throw(ctx, FZ_ERROR_GENERIC, "Unknown packing method found in path");
+		}
+	}
+	fz_catch(ctx)
+	{
+		fz_free(ctx, new_path->cmds);
+		fz_free(ctx, new_path);
+		fz_rethrow(ctx);
+	}
+	return new_path;
 }

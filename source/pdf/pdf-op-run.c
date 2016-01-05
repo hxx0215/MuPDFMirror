@@ -85,7 +85,6 @@ struct pdf_run_processor_s
 	fz_matrix tlm;
 	fz_matrix tm;
 	int text_mode;
-	int accumulate;
 
 	/* graphics state */
 	pdf_gstate *gstate;
@@ -754,7 +753,7 @@ pdf_flush_text(fz_context *ctx, pdf_run_processor *pr)
 			fz_adjust_rect_for_stroke(ctx, &tb, gstate->stroke_state, &gstate->ctm);
 
 		/* Don't bother sending a text group with nothing in it */
-		if (text->len == 0)
+		if (!text->head)
 			break;
 
 		if (dofill || dostroke)
@@ -794,7 +793,7 @@ pdf_flush_text(fz_context *ctx, pdf_run_processor *pr)
 			case PDF_MAT_PATTERN:
 				if (gstate->fill.pattern)
 				{
-					fz_clip_text(ctx, pr->dev, text, &gstate->ctm, 0);
+					fz_clip_text(ctx, pr->dev, text, &gstate->ctm);
 					pdf_show_pattern(ctx, pr, gstate->fill.pattern, &pr->gstate[gstate->fill.gstate_num], &tb, PDF_FILL);
 					fz_pop_clip(ctx, pr->dev);
 				}
@@ -802,7 +801,7 @@ pdf_flush_text(fz_context *ctx, pdf_run_processor *pr)
 			case PDF_MAT_SHADE:
 				if (gstate->fill.shade)
 				{
-					fz_clip_text(ctx, pr->dev, text, &gstate->ctm, 0);
+					fz_clip_text(ctx, pr->dev, text, &gstate->ctm);
 					/* Page 2 of patterns.pdf shows that fz_fill_shade should NOT be called with gstate->ctm */
 					fz_fill_shade(ctx, pr->dev, gstate->fill.shade, &pr->gstate[gstate->fill.gstate_num].ctm, gstate->fill.alpha);
 					fz_pop_clip(ctx, pr->dev);
@@ -848,10 +847,8 @@ pdf_flush_text(fz_context *ctx, pdf_run_processor *pr)
 
 		if (doclip)
 		{
-			if (pr->accumulate < 2)
-				gstate->clip_depth++;
-			fz_clip_text(ctx, pr->dev, text, &gstate->ctm, pr->accumulate);
-			pr->accumulate = 2;
+			gstate->clip_depth++;
+			fz_clip_text(ctx, pr->dev, text, &gstate->ctm);
 		}
 	}
 	fz_always(ctx)
@@ -921,22 +918,12 @@ pdf_show_char(fz_context *ctx, pdf_run_processor *pr, int cid)
 	 * uncachable, then render direct. */
 	render_direct = (!fontdesc->font->ft_face && pr->nested_depth > 0) || !fz_glyph_cacheable(ctx, fontdesc->font, gid);
 
-	/* flush buffered text if face or matrix or rendermode has changed */
-	if (!pr->text ||
-		fontdesc->font != pr->text->font ||
-		fontdesc->wmode != pr->text->wmode ||
-		fabsf(trm.a - pr->text->trm.a) > FLT_EPSILON ||
-		fabsf(trm.b - pr->text->trm.b) > FLT_EPSILON ||
-		fabsf(trm.c - pr->text->trm.c) > FLT_EPSILON ||
-		fabsf(trm.d - pr->text->trm.d) > FLT_EPSILON ||
-		gstate->render != pr->text_mode ||
-		render_direct)
+	/* flush buffered text if rendermode has changed */
+	if (!pr->text || gstate->render != pr->text_mode || render_direct)
 	{
 		gstate = pdf_flush_text(ctx, pr);
 
-		pr->text = fz_new_text(ctx, fontdesc->font, &trm, fontdesc->wmode);
-		pr->text->trm.e = 0;
-		pr->text->trm.f = 0;
+		pr->text = fz_new_text(ctx);
 		pr->text_mode = gstate->render;
 		pr->text_bbox = fz_empty_rect;
 	}
@@ -956,11 +943,11 @@ pdf_show_char(fz_context *ctx, pdf_run_processor *pr, int cid)
 	fz_union_rect(&pr->text_bbox, &bbox);
 
 	/* add glyph to textobject */
-	fz_add_text(ctx, pr->text, gid, ucsbuf[0], trm.e, trm.f);
+	fz_add_text(ctx, pr->text, fontdesc->font, fontdesc->wmode, &trm, gid, ucsbuf[0]);
 
 	/* add filler glyphs for one-to-many unicode mapping */
 	for (i = 1; i < ucslen; i++)
-		fz_add_text(ctx, pr->text, -1, ucsbuf[i], trm.e, trm.f);
+		fz_add_text(ctx, pr->text, fontdesc->font, fontdesc->wmode, &trm, -1, ucsbuf[i]);
 
 	if (fontdesc->wmode == 0)
 	{
@@ -1636,7 +1623,6 @@ static void pdf_run_ET(fz_context *ctx, pdf_processor *proc)
 {
 	pdf_run_processor *pr = (pdf_run_processor *)proc;
 	pdf_flush_text(ctx, pr);
-	pr->accumulate = 1;
 }
 
 /* text state */
@@ -1658,7 +1644,7 @@ static void pdf_run_Tw(fz_context *ctx, pdf_processor *proc, float wordspace)
 static void pdf_run_Tz(fz_context *ctx, pdf_processor *proc, float scale)
 {
 	pdf_run_processor *pr = (pdf_run_processor *)proc;
-	pdf_gstate *gstate = pdf_flush_text(ctx, pr);
+	pdf_gstate *gstate = pr->gstate + pr->gtop;
 	gstate->scale = scale / 100;
 }
 
@@ -2136,7 +2122,6 @@ pdf_new_run_processor(fz_context *ctx, fz_device *dev, const fz_matrix *ctm, con
 	proc->tlm = fz_identity;
 	proc->tm = fz_identity;
 	proc->text_mode = 0;
-	proc->accumulate = 1;
 
 	fz_try(ctx)
 	{

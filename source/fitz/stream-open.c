@@ -1,5 +1,14 @@
 #include "mupdf/fitz.h"
 
+int
+fz_file_exists(fz_context *ctx, const char *path)
+{
+	FILE *file = fz_fopen(path, "rb");
+	if (file)
+		fclose(file);
+	return !!file;
+}
+
 fz_stream *
 fz_new_stream(fz_context *ctx, void *state, fz_stream_next_fn *next, fz_stream_close_fn *close)
 {
@@ -142,7 +151,7 @@ fz_open_file(fz_context *ctx, const char *name)
 	f = fz_fopen(name, "rb");
 #endif
 	if (f == NULL)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "cannot open %s", name);
+		fz_throw(ctx, FZ_ERROR_GENERIC, "cannot open %s: %s", name, strerror(errno));
 	return fz_open_file_ptr(ctx, f);
 }
 
@@ -152,7 +161,7 @@ fz_open_file_w(fz_context *ctx, const wchar_t *name)
 {
 	FILE *f = _wfopen(name, L"rb");
 	if (f == NULL)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "cannot open file %ls", name);
+		fz_throw(ctx, FZ_ERROR_GENERIC, "cannot open file %ls: %s", name, strerror(errno));
 	return fz_open_file_ptr(ctx, f);
 }
 #endif

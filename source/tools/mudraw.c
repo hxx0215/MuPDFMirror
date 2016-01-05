@@ -141,7 +141,7 @@ static int bandheight = 0;
 
 static int errored = 0;
 static int append = 0;
-static fz_text_sheet *sheet = NULL;
+static fz_stext_sheet *sheet = NULL;
 static fz_colorspace *colorspace;
 static char *filename;
 static int files = 0;
@@ -310,7 +310,7 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 	{
 		fz_try(ctx)
 		{
-			dev = fz_new_trace_device(ctx);
+			dev = fz_new_trace_device(ctx, out);
 			if (list)
 				fz_run_display_list(ctx, list, dev, &fz_identity, &fz_infinite_rect, &cookie);
 			else
@@ -331,14 +331,14 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 
 	else if (output_format == OUT_TEXT || output_format == OUT_HTML || output_format == OUT_STEXT)
 	{
-		fz_text_page *text = NULL;
+		fz_stext_page *text = NULL;
 
 		fz_var(text);
 
 		fz_try(ctx)
 		{
-			text = fz_new_text_page(ctx);
-			dev = fz_new_text_device(ctx, sheet, text);
+			text = fz_new_stext_page(ctx);
+			dev = fz_new_stext_device(ctx, sheet, text);
 			if (output_format == OUT_HTML)
 				fz_disable_device_hints(ctx, dev, FZ_IGNORE_IMAGE);
 			if (list)
@@ -349,16 +349,16 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 			dev = NULL;
 			if (output_format == OUT_STEXT)
 			{
-				fz_print_text_page_xml(ctx, out, text);
+				fz_print_stext_page_xml(ctx, out, text);
 			}
 			else if (output_format == OUT_HTML)
 			{
 				fz_analyze_text(ctx, sheet, text);
-				fz_print_text_page_html(ctx, out, text);
+				fz_print_stext_page_html(ctx, out, text);
 			}
 			else if (output_format == OUT_TEXT)
 			{
-				fz_print_text_page(ctx, out, text);
+				fz_print_stext_page(ctx, out, text);
 				fz_printf(ctx, out, "\f\n");
 			}
 		}
@@ -366,7 +366,7 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 		{
 			fz_drop_device(ctx, dev);
 			dev = NULL;
-			fz_drop_text_page(ctx, text);
+			fz_drop_stext_page(ctx, text);
 		}
 		fz_catch(ctx)
 		{
@@ -420,20 +420,15 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 		fz_matrix ctm;
 		fz_rect bounds, tbounds;
 		char buf[512];
-		FILE *file;
 		fz_output *out;
 
 		if (!strcmp(output, "-"))
-			file = stdout;
+			out = fz_new_output_with_file_ptr(ctx, stdout, 0);
 		else
 		{
 			sprintf(buf, output, pagenum);
-			file = fz_fopen(buf, "wb");
-			if (file == NULL)
-				fz_throw(ctx, FZ_ERROR_GENERIC, "cannot open file '%s': %s", buf, strerror(errno));
+			out = fz_new_output_with_path(ctx, buf, 0);
 		}
-
-		out = fz_new_output_with_file(ctx, file, 0);
 
 		fz_bound_page(ctx, page, &bounds);
 		zoom = resolution / 72;
@@ -456,8 +451,6 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 			fz_drop_device(ctx, dev);
 			dev = NULL;
 			fz_drop_output(ctx, out);
-			if (file != stdout)
-				fclose(file);
 		}
 		fz_catch(ctx)
 		{
@@ -567,19 +560,19 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 			if (output)
 			{
 				if (!strcmp(output, "-"))
-					output_file = fz_new_output_with_file(ctx, stdout, 0);
+					output_file = fz_new_output_with_file_ptr(ctx, stdout, 0);
 				else
 				{
 					sprintf(filename_buf, output, pagenum);
-					output_file = fz_new_output_to_filename(ctx, filename_buf);
+					output_file = fz_new_output_with_path(ctx, filename_buf, 0);
 				}
 
 				if (output_format == OUT_PGM || output_format == OUT_PPM || output_format == OUT_PNM)
-					fz_output_pnm_header(ctx, output_file, pix->w, totalheight, pix->n);
+					fz_write_pnm_header(ctx, output_file, pix->w, totalheight, pix->n);
 				else if (output_format == OUT_PAM)
-					fz_output_pam_header(ctx, output_file, pix->w, totalheight, pix->n, savealpha);
+					fz_write_pam_header(ctx, output_file, pix->w, totalheight, pix->n, savealpha);
 				else if (output_format == OUT_PNG)
-					poc = fz_output_png_header(ctx, output_file, pix->w, totalheight, pix->n, savealpha);
+					poc = fz_write_png_header(ctx, output_file, pix->w, totalheight, pix->n, savealpha);
 			}
 
 			for (band = 0; band < bands; band++)
@@ -610,23 +603,23 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 				if (output)
 				{
 					if (output_format == OUT_PGM || output_format == OUT_PPM || output_format == OUT_PNM)
-						fz_output_pnm_band(ctx, output_file, pix->w, totalheight, pix->n, band, drawheight, pix->samples);
+						fz_write_pnm_band(ctx, output_file, pix->w, totalheight, pix->n, band, drawheight, pix->samples);
 					else if (output_format == OUT_PAM)
-						fz_output_pam_band(ctx, output_file, pix->w, totalheight, pix->n, band, drawheight, pix->samples, savealpha);
+						fz_write_pam_band(ctx, output_file, pix->w, totalheight, pix->n, band, drawheight, pix->samples, savealpha);
 					else if (output_format == OUT_PNG)
-						fz_output_png_band(ctx, output_file, pix->w, totalheight, pix->n, band, drawheight, pix->samples, savealpha, poc);
+						fz_write_png_band(ctx, output_file, pix->w, totalheight, pix->n, band, drawheight, pix->samples, savealpha, poc);
 					else if (output_format == OUT_PWG)
 					{
 						if (has_percent_d(output))
 							append = 0;
 						if (out_cs == CS_MONO)
 						{
-							fz_bitmap *bit = fz_halftone_pixmap(ctx, pix, NULL);
-							fz_write_pwg_bitmap(ctx, bit, filename_buf, append, NULL);
+							fz_bitmap *bit = fz_new_bitmap_from_pixmap(ctx, pix, NULL);
+							fz_save_bitmap_as_pwg(ctx, bit, filename_buf, append, NULL);
 							fz_drop_bitmap(ctx, bit);
 						}
 						else
-							fz_write_pwg(ctx, pix, filename_buf, append, NULL);
+							fz_save_pixmap_as_pwg(ctx, pix, filename_buf, append, NULL);
 						append = 1;
 					}
 					else if (output_format == OUT_PCL)
@@ -639,22 +632,22 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 							append = 0;
 						if (out_cs == CS_MONO)
 						{
-							fz_bitmap *bit = fz_halftone_pixmap(ctx, pix, NULL);
-							fz_write_pcl_bitmap(ctx, bit, filename_buf, append, &options);
+							fz_bitmap *bit = fz_new_bitmap_from_pixmap(ctx, pix, NULL);
+							fz_save_bitmap_as_pcl(ctx, bit, filename_buf, append, &options);
 							fz_drop_bitmap(ctx, bit);
 						}
 						else
-							fz_write_pcl(ctx, pix, filename_buf, append, &options);
+							fz_save_pixmap_as_pcl(ctx, pix, filename_buf, append, &options);
 						append = 1;
 					}
 					else if (output_format == OUT_PBM) {
-						fz_bitmap *bit = fz_halftone_pixmap(ctx, pix, NULL);
-						fz_write_pbm(ctx, bit, filename_buf);
+						fz_bitmap *bit = fz_new_bitmap_from_pixmap(ctx, pix, NULL);
+						fz_save_bitmap_as_pbm(ctx, bit, filename_buf);
 						fz_drop_bitmap(ctx, bit);
 					}
 					else if (output_format == OUT_TGA)
 					{
-						fz_write_tga(ctx, pix, filename_buf, savealpha);
+						fz_save_pixmap_as_tga(ctx, pix, filename_buf, savealpha);
 					}
 				}
 				ctm.f -= drawheight;
@@ -676,7 +669,7 @@ static void drawpage(fz_context *ctx, fz_document *doc, int pagenum)
 			if (output)
 			{
 				if (output_format == OUT_PNG)
-					fz_output_png_trailer(ctx, output_file, poc);
+					fz_write_png_trailer(ctx, output_file, poc);
 			}
 
 			fz_drop_device(ctx, dev);
@@ -860,7 +853,6 @@ int mudraw_main(int argc, char **argv)
 	int c;
 	fz_context *ctx;
 	fz_alloc_context alloc_ctx = { NULL, trace_malloc, trace_realloc, trace_free };
-	FILE *my_output = NULL;
 
 	fz_var(doc);
 
@@ -1045,24 +1037,16 @@ int mudraw_main(int argc, char **argv)
 	if (output_format == OUT_TEXT || output_format == OUT_HTML || output_format == OUT_STEXT || output_format == OUT_TRACE)
 	{
 		if (output && output[0] != '-' && *output != 0)
-		{
-			my_output = fopen(output, "w");
-			if (my_output == NULL)
-			{
-				fprintf(stderr, "Failed to open file '%s' for output\n", output);
-				exit(1);
-			}
-		}
+			out = fz_new_output_with_path(ctx, output, 0);
 		else
-			my_output = stdout;
-		out = fz_new_output_with_file(ctx, my_output, 0);
+			out = fz_new_output_with_file_ptr(ctx, stdout, 0);
 	}
 
 	if (output_format == OUT_STEXT || output_format == OUT_TRACE)
 		fz_printf(ctx, out, "<?xml version=\"1.0\"?>\n");
 
 	if (output_format == OUT_TEXT || output_format == OUT_HTML || output_format == OUT_STEXT)
-		sheet = fz_new_text_sheet(ctx);
+		sheet = fz_new_stext_sheet(ctx);
 
 	if (output_format == OUT_HTML)
 	{
@@ -1110,7 +1094,7 @@ int mudraw_main(int argc, char **argv)
 					fz_printf(ctx, out, "<document name=\"%s\">\n", filename);
 				if (output_format == OUT_GPROOF)
 				{
-					fz_write_gproof_file(ctx, filename, doc, output, resolution, "", "");
+					fz_save_gproof(ctx, filename, doc, output, resolution, "", "");
 				}
 				else
 				{
@@ -1146,9 +1130,7 @@ int mudraw_main(int argc, char **argv)
 
 	if (pdfout)
 	{
-		fz_write_options opts = { 0 };
-
-		pdf_write_document(ctx, pdfout, output, &opts);
+		pdf_save_document(ctx, pdfout, output, NULL);
 		pdf_close_document(ctx, pdfout);
 	}
 
@@ -1156,16 +1138,13 @@ int mudraw_main(int argc, char **argv)
 	{
 		fz_printf(ctx, out, "</body>\n");
 		fz_printf(ctx, out, "<style>\n");
-		fz_print_text_sheet(ctx, out, sheet);
+		fz_print_stext_sheet(ctx, out, sheet);
 		fz_printf(ctx, out, "</style>\n");
 	}
 
-	fz_drop_text_sheet(ctx, sheet);
+	fz_drop_stext_sheet(ctx, sheet);
 	fz_drop_output(ctx, out);
 	out = NULL;
-
-	if (my_output != NULL && my_output != stdout)
-		fclose(my_output);
 
 	if (showtime && timing.count > 0)
 	{

@@ -66,6 +66,7 @@ void fz_drop_path(fz_context *ctx, fz_path *path);
 void fz_trim_path(fz_context *ctx, fz_path *path);
 int fz_packed_path_size(const fz_path *path);
 int fz_pack_path(fz_context *ctx, uint8_t *pack, int max, const fz_path *path);
+fz_path *fz_clone_path(fz_context *ctx, fz_path *path);
 
 fz_point fz_currentpoint(fz_context *ctx, fz_path *path);
 void fz_moveto(fz_context*, fz_path*, float x, float y);
@@ -92,8 +93,6 @@ fz_stroke_state *fz_unshare_stroke_state(fz_context *ctx, fz_stroke_state *share
 fz_stroke_state *fz_unshare_stroke_state_with_dash_len(fz_context *ctx, fz_stroke_state *shared, int len);
 fz_stroke_state *fz_clone_stroke_state(fz_context *ctx, fz_stroke_state *stroke);
 
-#ifndef NDEBUG
-void fz_print_path(fz_context *ctx, FILE *out, fz_path *, int indent);
-#endif
+void fz_print_path(fz_context *ctx, fz_output *out, fz_path *, int indent);
 
 #endif
